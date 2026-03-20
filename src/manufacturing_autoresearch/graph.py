@@ -72,6 +72,43 @@ def _build_run_memory(state: RunState) -> dict:
     }
 
 
+def _short_iteration_status(i, candidate_result, candidate_evaluation, decision, repair_signal) -> str:
+    status = candidate_result.solver_status
+    feasible = candidate_evaluation.is_feasible
+    acceptable = candidate_evaluation.is_acceptable
+    computed_obj = candidate_evaluation.computed_objective_value
+    failure_type = repair_signal.get("failure_type", "")
+    accepted = decision.accepted
+
+    return (
+        f"[iter {i + 1}] "
+        f"status={status} | "
+        f"feasible={feasible} | "
+        f"acceptable={acceptable} | "
+        f"objective={computed_obj} | "
+        f"accepted={accepted} | "
+        f"failure_type={failure_type}"
+    )
+
+
+def _print_live_iteration_update(i, candidate_result, candidate_evaluation, decision, repair_signal) -> None:
+    print(_short_iteration_status(i, candidate_result, candidate_evaluation, decision, repair_signal))
+
+    violations = candidate_evaluation.violations or []
+    if violations:
+        print(f"  top_issue: {violations[0]}")
+
+    missing_terms = repair_signal.get("missing_objective_terms", []) or []
+    if missing_terms:
+        terms = ", ".join(item.get("term", "") for item in missing_terms if item.get("term"))
+        if terms:
+            print(f"  missing_terms: {terms}")
+
+    runtime_guidance = repair_signal.get("runtime_error_guidance", []) or []
+    if runtime_guidance:
+        print(f"  runtime_hint: {runtime_guidance[0]}")
+
+
 def _build_repair_signal(
     problem,
     candidate_program,
@@ -121,6 +158,22 @@ def _build_repair_signal(
 
     if not novelty and failure_type in {"objective_mismatch", "no_improvement"}:
         failure_type = "no_structural_change"
+
+    traceback_text = "\n".join(candidate_result.notes)
+
+    runtime_error_guidance = []
+    if failure_type == "runtime_error":
+        if "KeyError:" in traceback_text:
+            runtime_error_guidance.append(
+                "Do not assume dense variable dictionaries. Iterate over existing keys or check membership before access."
+            )
+            runtime_error_guidance.append(
+                "Use sparse eligibility-safe indexing for x[job, machine, slot]. Only reference keys that actually exist."
+            )
+        if "KeyError:" in traceback_text and "x[(" in candidate_program.model_logic:
+            runtime_error_guidance.append(
+                "The candidate likely referenced a decision-variable key that does not exist. Guard all x[(job, machine, slot)] accesses."
+            )
 
     if failure_type == "rule_violation":
         must_fix = [
@@ -174,9 +227,9 @@ def _build_repair_signal(
         "violated_rules": violated_rules,
         "missing_objective_terms": missing_objective_terms,
         "missing_objective_term_guidance": [
-            term
-            for term in proposer_guidance.get("active_objective_guidance", [])
-            if term.get("term") in missing_term_ids
+            proposer_guidance.get("available_objective_term_definitions", {}).get(term_id, {})
+            for term_id in missing_term_ids
+            if proposer_guidance.get("available_objective_term_definitions", {}).get(term_id)
         ],
         "objective_mismatch": {
             "reported_objective_value": candidate_evaluation.reported_objective_value,
@@ -184,7 +237,8 @@ def _build_repair_signal(
         },
         "current_assignments": [a.model_dump() for a in candidate_result.assignments],
         "forbidden_patterns": ["```", "data['problem']", 'data["problem"]'],
-        "last_traceback": "\n".join(candidate_result.notes),
+        "last_traceback": traceback_text,
+        "runtime_error_guidance": runtime_error_guidance,
         "modeling_guidance": [
             "Keep existing working feasibility constraints unless they directly cause a violation.",
             "If hard rules are violated, change the MILP constraints rather than only changing output formatting.",
@@ -197,8 +251,16 @@ def _build_repair_signal(
         "problem_objective": problem.evaluation_framework.get("objective", {}),
         "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
         "candidate_changed_structure": novelty,
+        "problem_active_rule_ids": proposer_guidance.get("problem_active_rule_ids", []),
+        "problem_active_objective_id": proposer_guidance.get("problem_active_objective_id", ""),
         "active_rules_guidance": proposer_guidance.get("active_rules_guidance", []),
         "active_objective_guidance": proposer_guidance.get("active_objective_guidance", []),
+        "available_rule_definitions": proposer_guidance.get("available_rule_definitions", {}),
+        "available_objective_term_definitions": proposer_guidance.get("available_objective_term_definitions", {}),
+        "latest_rule_results_from_guidance": proposer_guidance.get("latest_rule_results", []),
+        "latest_objective_terms_from_guidance": proposer_guidance.get("latest_objective_terms", {}),
+        "latest_violations_from_guidance": proposer_guidance.get("latest_violations", []),
+        "latest_acceptability_from_guidance": proposer_guidance.get("latest_acceptability", {}),
     }
 
 
@@ -207,11 +269,21 @@ def build_graph(settings: Settings, run_dir: Path):
     llm = LLMClient()
 
     def run(problem: ProblemDefinition) -> RunState:
+        print(f"[start] problem={problem.name} | max_iterations={settings.max_iterations}")
+
         best_program = baseline_program()
         best_preflight = run_preflight(best_program)
         best_program.model_logic = best_preflight.normalized_code
         best_result = execute_program(problem, best_program)
         best_evaluation = evaluate_result(problem, best_result)
+
+        print(
+            "[baseline] "
+            f"status={best_result.solver_status} | "
+            f"feasible={best_evaluation.is_feasible} | "
+            f"acceptable={best_evaluation.is_acceptable} | "
+            f"objective={best_evaluation.computed_objective_value}"
+        )
 
         state = RunState(
             problem=problem,
@@ -321,6 +393,14 @@ def build_graph(settings: Settings, run_dir: Path):
 
             dump_json(run_dir / f"iteration_{i:02d}.json", record.model_dump())
 
+            _print_live_iteration_update(
+                i=i,
+                candidate_result=candidate_result,
+                candidate_evaluation=candidate_evaluation,
+                decision=decision,
+                repair_signal=repair_signal,
+            )
+
             if state.best_evaluation.is_acceptable and accepted:
                 state.stop = True
                 state.final_message = "Accepted solution found from current best solver."
@@ -328,6 +408,8 @@ def build_graph(settings: Settings, run_dir: Path):
 
         if not state.stop:
             state.final_message = "Maximum iterations reached."
+
+        dump_json(run_dir / "final_state_full.json", state.model_dump())
         return state
 
     return run
