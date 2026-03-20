@@ -1,0 +1,16 @@
+{
+  "accepted": false,
+  "reason": "Candidate did not beat current best; keeping fallback.",
+  "candidate_score": [
+    1,
+    1,
+    3,
+    -5.0
+  ],
+  "best_score_before": [
+    1,
+    1,
+    3,
+    -5.0
+  ]
+}
