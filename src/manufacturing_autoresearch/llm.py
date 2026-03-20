@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import os
 
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
 
 from .types import ProblemDefinition, ProgramProposal
 
 
 load_dotenv()
+
 
 REASONING_SYSTEM_PROMPT = """You are a MILP modeling assistant for manufacturing scheduling.
 
@@ -29,8 +30,13 @@ Return ONLY valid JSON with this schema:
 
 Rules:
 - Be concrete and mathematically actionable.
+- Use the proposer guidance as the main semantic source of truth.
+- Do not assume the meaning of rules or objective terms only from their names if source-level guidance is available.
+- Read the provided rule/objective definitions and source code snippets before deciding how to modify the MILP.
 - If an objective term is missing, explain what auxiliary variables and linking constraints are needed.
 - If hard rules are already satisfied, explicitly say they should be preserved.
+- Preserve sparse indexing safety: if a variable dictionary only contains eligible keys, never assume all (job, machine, slot) tuples exist.
+- When describing changes, explicitly mention whether constraints must guard with checks like `(job, machine, slot) in x`.
 - Do not return code.
 - Do not return markdown.
 """
@@ -61,6 +67,13 @@ Rules:
 - Prefer minimal targeted edits over full rewrites.
 - If the previous candidate made no structural change, you must materially change the objective or constraints.
 - A candidate that only adds comments, renames variables, or reformats code is invalid.
+
+Critical modeling rules:
+- Respect sparse indexing: if x only contains eligible decision variables, never reference x[(job, machine, slot)] unless that key exists.
+- When summing over x, either iterate over existing keys or guard with `if (job, machine, slot) in x`.
+- Do not invent dense variable access for ineligible machine-job pairs.
+- If modeling transition/changeover logic, ensure the formulation matches the evaluator semantics rather than guessing from the term name alone.
+- Use the provided proposer guidance and source definitions to infer the intended math.
 """
 
 
@@ -72,6 +85,40 @@ class LLMClient:
 
     def _fallback(self, current_best: ProgramProposal) -> ProgramProposal:
         return current_best
+
+    def _build_reasoning_prompt(
+        self,
+        problem: ProblemDefinition,
+        current_best: ProgramProposal,
+        repair_signal: dict,
+        proposer_guidance: dict,
+        run_memory: dict | None = None,
+    ) -> dict:
+        return {
+            "task": "Analyze the current MILP and describe the minimum structural change needed.",
+            "problem_definition": problem.model_dump(),
+            "current_best_code": current_best.model_logic,
+            "repair_signal": repair_signal,
+            "proposer_guidance": proposer_guidance,
+            "run_memory": run_memory or {},
+            "required_behavior": [
+                "Explain what is missing or wrong in the current MILP.",
+                "State what must remain unchanged if it already works.",
+                "Use proposer_guidance.problem_active_rule_ids and proposer_guidance.problem_active_objective_id to identify what is active for this problem.",
+                "Use proposer_guidance.available_rule_definitions and proposer_guidance.available_objective_term_definitions as the first semantic reference for modeling.",
+                "If those structured definitions are incomplete, inspect proposer_guidance.rules_source_code and proposer_guidance.objective_terms_source_code.",
+                "Do not assume a rule or objective term meaning only from its name if code-level guidance is available.",
+                "If objective terms are missing, describe what auxiliary variables and linking constraints are needed.",
+                "If the loop is stuck in no_structural_change, propose an actual structural MILP modification.",
+                "Respect sparse indexing and explicitly mention eligibility-safe indexing when relevant.",
+            ],
+            "special_attention_checks": [
+                "Does the current MILP reference only valid keys in x?",
+                "Do proposed new constraints require guards like `(job, machine, slot) in x`?",
+                "Does the intended formulation actually match the evaluator objective semantics?",
+                "Are currently satisfied hard constraints preserved?",
+            ],
+        }
 
     def reason_about_fix(
         self,
@@ -92,20 +139,13 @@ class LLMClient:
                 "anti_patterns": [],
             }
 
-        user_prompt = {
-            "task": "Analyze the current MILP and describe the minimum structural change needed.",
-            "problem_definition": problem.model_dump(),
-            "current_best_code": current_best.model_logic,
-            "repair_signal": repair_signal,
-            "proposer_guidance": proposer_guidance,
-            "run_memory": run_memory or {},
-            "required_behavior": [
-                "Explain what is missing or wrong in the current MILP.",
-                "State what must remain unchanged if it already works.",
-                "If objective terms are missing, describe what auxiliary variables and linking constraints are needed.",
-                "If the loop is stuck in no_structural_change, propose an actual structural MILP modification.",
-            ],
-        }
+        user_prompt = self._build_reasoning_prompt(
+            problem=problem,
+            current_best=current_best,
+            repair_signal=repair_signal,
+            proposer_guidance=proposer_guidance,
+            run_memory=run_memory,
+        )
 
         try:
             response = self.client.responses.create(
@@ -131,7 +171,7 @@ class LLMClient:
                 "anti_patterns": [],
             }
 
-    def generate_code_from_reasoning(
+    def _build_codegen_prompt(
         self,
         problem: ProblemDefinition,
         current_best: ProgramProposal,
@@ -139,11 +179,8 @@ class LLMClient:
         proposer_guidance: dict,
         reasoning_plan: dict,
         run_memory: dict | None = None,
-    ) -> ProgramProposal:
-        if not self.client:
-            return self._fallback(current_best)
-
-        user_prompt = {
+    ) -> dict:
+        return {
             "task": "Produce an improved MILP model from the reasoning plan.",
             "problem_definition": problem.model_dump(),
             "current_best_code": current_best.model_logic,
@@ -156,23 +193,54 @@ class LLMClient:
                 "Fix violated hard rules by changing constraints.",
                 "If the evaluator reports missing objective terms, incorporate those terms directly into the MILP objective.",
                 "If the current model is feasible but not acceptable, make the smallest structural change needed to address the evaluator complaint.",
-                "Use proposer_guidance.active_rules_guidance and proposer_guidance.active_objective_guidance as the semantic specification of what the MILP must satisfy and optimize.",
+                "Use proposer_guidance.problem_active_rule_ids and proposer_guidance.problem_active_objective_id to determine what is active in this problem.",
+                "Use proposer_guidance.available_rule_definitions and proposer_guidance.available_objective_term_definitions as semantic guidance.",
+                "If those are incomplete, consult proposer_guidance.rules_source_code and proposer_guidance.objective_terms_source_code before deciding the formulation.",
                 "If the reasoning_plan specifies new variables or new constraints, implement them in the code.",
                 "Do not return code equivalent to the current_best_code.",
+                "Preserve sparse eligibility-safe indexing.",
+                "Never reference x[(job, machine, slot)] unless that key exists in x.",
             ],
             "special_guidance": {
                 "objective_mismatch": [
                     "Modify the MILP objective itself, not only the output formatting.",
                     "For each missing objective term, identify what additional variables or linearization are needed.",
-                    "A changeover penalty typically requires auxiliary binary variables for machine transitions between consecutive slots or an equivalent linearization.",
+                    "If source-level rule/objective guidance is available, use that to determine the correct semantics.",
+                    "Do not guess a mathematical formulation if the supplied guidance/source text already implies a specific one.",
                 ],
                 "no_structural_change": [
                     "You must change the MILP structure.",
                     "Add new variables, constraints, or objective terms as required by reasoning_plan.",
                     "Do not return comments-only or formatting-only changes.",
                 ],
+                "runtime_error": [
+                    "Repair runtime errors before optimizing quality.",
+                    "If a previous candidate failed due to invalid dictionary access, rewrite the new formulation to use eligibility-safe indexing.",
+                    "Guard sparse variable access with membership tests or iterate only over existing keys.",
+                ],
             },
         }
+
+    def generate_code_from_reasoning(
+        self,
+        problem: ProblemDefinition,
+        current_best: ProgramProposal,
+        repair_signal: dict,
+        proposer_guidance: dict,
+        reasoning_plan: dict,
+        run_memory: dict | None = None,
+    ) -> ProgramProposal:
+        if not self.client:
+            return self._fallback(current_best)
+
+        user_prompt = self._build_codegen_prompt(
+            problem=problem,
+            current_best=current_best,
+            repair_signal=repair_signal,
+            proposer_guidance=proposer_guidance,
+            reasoning_plan=reasoning_plan,
+            run_memory=run_memory,
+        )
 
         try:
             response = self.client.responses.create(
