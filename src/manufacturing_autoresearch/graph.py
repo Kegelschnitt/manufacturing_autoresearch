@@ -1,6 +1,6 @@
-
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .baseline import baseline_program
@@ -9,6 +9,7 @@ from .execution import execute_program
 from .llm import LLMClient
 from .logging_utils import dump_json, ensure_dir
 from .preflight import run_preflight
+from .proposer_guidance import extract_proposer_guidance
 from .selector import should_accept_candidate
 from .types import IterationRecord, ProblemDefinition, RunState, Settings, SolverResult
 
@@ -29,7 +30,58 @@ def _classify_failure(candidate_preflight, candidate_result, candidate_evaluatio
     return "no_improvement"
 
 
-def _build_repair_signal(problem, candidate_program, candidate_result, candidate_evaluation, decision, best_program, candidate_preflight):
+def _build_run_memory(state: RunState) -> dict:
+    recent = state.history[-3:]
+
+    persistent_failure_types = []
+    persistent_missing_terms = set()
+
+    rules_already_satisfied = []
+    if state.best_evaluation:
+        rules_already_satisfied = [
+            rc.rule_id for rc in state.best_evaluation.rule_checks if rc.passed
+        ]
+
+    for rec in recent:
+        ft = rec.repair_signal.get("failure_type")
+        if ft:
+            persistent_failure_types.append(ft)
+
+        for item in rec.repair_signal.get("missing_objective_terms", []):
+            term = item.get("term")
+            if term:
+                persistent_missing_terms.add(term)
+
+    return {
+        "iterations_seen": state.current_iteration,
+        "persistent_failure_types": persistent_failure_types,
+        "persistent_missing_objective_terms": sorted(persistent_missing_terms),
+        "rules_already_satisfied": rules_already_satisfied,
+        "recent_attempt_summaries": [
+            {
+                "iteration": rec.iteration,
+                "failure_type": rec.repair_signal.get("failure_type"),
+                "candidate_changed_structure": rec.repair_signal.get("candidate_changed_structure"),
+                "missing_objective_terms": [
+                    item.get("term")
+                    for item in rec.repair_signal.get("missing_objective_terms", [])
+                ],
+            }
+            for rec in recent
+        ],
+    }
+
+
+def _build_repair_signal(
+    problem,
+    candidate_program,
+    candidate_result,
+    candidate_evaluation,
+    decision,
+    best_program,
+    candidate_preflight,
+    proposer_guidance,
+):
     failure_type = _classify_failure(candidate_preflight, candidate_result, candidate_evaluation)
 
     violated_rules = [
@@ -51,7 +103,7 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
                             "term": term,
                             "reported_contribution": 0.0,
                             "computed_contribution": float(value),
-                            "details": "This term appears active in the evaluator but is missing from the solver objective."
+                            "details": "This term appears active in the evaluator but is missing from the solver objective.",
                         }
                     )
         else:
@@ -61,7 +113,7 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
                         "term": term,
                         "reported_contribution": None,
                         "computed_contribution": float(value),
-                        "details": "Evaluator detected this active objective contribution, but the solver-reported objective does not match the full computed objective."
+                        "details": "Evaluator detected this active objective contribution, but the solver-reported objective does not match the full computed objective.",
                     }
                 )
 
@@ -74,7 +126,7 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
         must_fix = [
             "One or more hard rules are violated.",
             "Change the MILP constraints so the solver cannot produce assignments violating those rules.",
-            "Do not rely on extract_assignments to filter invalid assignments after solving."
+            "Do not rely on extract_assignments to filter invalid assignments after solving.",
         ]
         summary = "Hard-rule violations were detected; the MILP constraints must be strengthened."
     elif failure_type == "objective_mismatch":
@@ -83,35 +135,37 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
             f"The MILP objective currently omits or mis-models: {missing_terms_text}.",
             "Modify the MILP objective itself, not just output formatting.",
             "Add auxiliary variables and linking constraints if needed to represent missing objective terms linearly.",
-            "Return an objective_value equal to the optimized full MILP objective."
+            "Return an objective_value equal to the optimized full MILP objective.",
         ]
         summary = "The current MILP is feasible but does not optimize the full evaluation objective."
     elif failure_type == "no_structural_change":
         must_fix = [
             "The candidate repeated the current baseline or made no meaningful structural change.",
             "Change the MILP objective or constraints, not just comments or formatting.",
-            "For objective mismatch, explicitly introduce variables/constraints for the missing term and add it to the objective."
+            "For objective mismatch, explicitly introduce variables/constraints for the missing term and add it to the objective.",
         ]
         summary = "Candidate made no meaningful structural change."
     elif failure_type == "runtime_error":
         must_fix = [
             "Fix syntax/runtime issues first.",
             "Return valid executable Python for build_model and extract_assignments.",
-            "Preserve existing working behavior while repairing execution."
+            "Preserve existing working behavior while repairing execution.",
         ]
         summary = "Generated program failed during execution."
     elif failure_type == "preflight_error":
         must_fix = [
             "Fix preflight issues before changing model structure.",
-            "Return only raw Python code with the required functions."
+            "Return only raw Python code with the required functions.",
         ]
         summary = "Generated program failed preflight checks."
     else:
         must_fix = [
             "Preserve the current best behavior and improve only one weakness.",
-            "If the objective is already modeled correctly, search for a strictly better feasible objective."
+            "If the objective is already modeled correctly, search for a strictly better feasible objective.",
         ]
         summary = decision.reason
+
+    missing_term_ids = {item["term"] for item in missing_objective_terms}
 
     return {
         "failure_type": failure_type,
@@ -119,6 +173,11 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
         "must_fix": must_fix,
         "violated_rules": violated_rules,
         "missing_objective_terms": missing_objective_terms,
+        "missing_objective_term_guidance": [
+            term
+            for term in proposer_guidance.get("active_objective_guidance", [])
+            if term.get("term") in missing_term_ids
+        ],
         "objective_mismatch": {
             "reported_objective_value": candidate_evaluation.reported_objective_value,
             "computed_objective_value": candidate_evaluation.computed_objective_value,
@@ -131,13 +190,15 @@ def _build_repair_signal(problem, candidate_program, candidate_result, candidate
             "If hard rules are violated, change the MILP constraints rather than only changing output formatting.",
             "If objective terms are missing, change the MILP objective and add auxiliary variables/constraints if needed.",
             "Do not fake compliance by filtering invalid assignments in extract_assignments after solving.",
-            "A candidate that does not materially change the MILP structure may be rejected as no_structural_change."
+            "A candidate that does not materially change the MILP structure may be rejected as no_structural_change.",
         ],
         "latest_rule_checks": [rc.model_dump() for rc in candidate_evaluation.rule_checks],
         "latest_objective_terms": objective_terms,
         "problem_objective": problem.evaluation_framework.get("objective", {}),
         "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
         "candidate_changed_structure": novelty,
+        "active_rules_guidance": proposer_guidance.get("active_rules_guidance", []),
+        "active_objective_guidance": proposer_guidance.get("active_objective_guidance", []),
     }
 
 
@@ -167,7 +228,21 @@ def build_graph(settings: Settings, run_dir: Path):
         )
 
         for i in range(settings.max_iterations):
-            candidate_program = llm.propose(problem, state.best_program, state.repair_signal)
+            proposer_guidance = extract_proposer_guidance(
+                problem=problem.model_dump(),
+                evaluation=state.best_evaluation.model_dump() if state.best_evaluation else None,
+            )
+
+            run_memory = _build_run_memory(state)
+
+            candidate_program, reasoning_plan = llm.propose(
+                problem,
+                state.best_program,
+                state.repair_signal,
+                proposer_guidance,
+                run_memory,
+            )
+
             candidate_preflight = run_preflight(candidate_program)
             candidate_program.model_logic = candidate_preflight.normalized_code
 
@@ -180,6 +255,10 @@ def build_graph(settings: Settings, run_dir: Path):
                     assignments=[],
                     notes=["Candidate code was effectively identical to current best and was rejected before execution."],
                 )
+                if isinstance(reasoning_plan, dict):
+                    candidate_result.notes.append(
+                        "reasoning_plan=" + json.dumps(reasoning_plan, ensure_ascii=False)
+                    )
                 candidate_evaluation = state.best_evaluation
                 decision = should_accept_candidate(candidate_evaluation, state.best_evaluation)
                 decision.accepted = False
@@ -194,6 +273,10 @@ def build_graph(settings: Settings, run_dir: Path):
                         objective_value=None,
                         assignments=[],
                         notes=candidate_preflight.errors,
+                    )
+                if isinstance(reasoning_plan, dict):
+                    candidate_result.notes.append(
+                        "reasoning_plan=" + json.dumps(reasoning_plan, ensure_ascii=False)
                     )
                 candidate_evaluation = evaluate_result(problem, candidate_result)
                 decision = should_accept_candidate(candidate_evaluation, state.best_evaluation)
@@ -213,9 +296,17 @@ def build_graph(settings: Settings, run_dir: Path):
                 decision=decision,
                 best_program=state.best_program,
                 candidate_preflight=candidate_preflight,
+                proposer_guidance=proposer_guidance,
             )
 
-            rec = IterationRecord(
+            state.latest_program = candidate_program
+            state.latest_preflight = candidate_preflight
+            state.latest_result = candidate_result
+            state.latest_evaluation = candidate_evaluation
+            state.repair_signal = repair_signal
+            state.current_iteration = i + 1
+
+            record = IterationRecord(
                 iteration=i,
                 candidate_program=candidate_program,
                 candidate_preflight=candidate_preflight,
@@ -226,17 +317,11 @@ def build_graph(settings: Settings, run_dir: Path):
                 best_evaluation_after=state.best_evaluation,
                 repair_signal=repair_signal,
             )
-            state.history.append(rec)
-            state.current_iteration = i + 1
-            state.repair_signal = repair_signal
-            state.latest_program = candidate_program
-            state.latest_preflight = candidate_preflight
-            state.latest_result = candidate_result
-            state.latest_evaluation = candidate_evaluation
+            state.history.append(record)
 
-            dump_json(run_dir / f"iteration_{i}.json", rec)
+            dump_json(run_dir / f"iteration_{i:02d}.json", record.model_dump())
 
-            if state.best_evaluation.is_acceptable:
+            if state.best_evaluation.is_acceptable and accepted:
                 state.stop = True
                 state.final_message = "Accepted solution found from current best solver."
                 break
