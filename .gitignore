@@ -20,3 +20,4 @@ runs/
 dist/
 build/
 *.egg-info/
+.env
