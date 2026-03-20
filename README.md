@@ -137,6 +137,7 @@ Problems are defined as JSON:
     "objective": {...}
   }
 }
+```
 
 ## Quick start
 
