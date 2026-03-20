@@ -6,8 +6,8 @@ from .types import CandidateDecision, EvaluationReport
 def _score(ev: EvaluationReport) -> tuple[int, int, int, float]:
     passed = sum(1 for c in ev.rule_checks if c.passed)
     return (
+        1 if ev.is_acceptable else 0,
         1 if ev.is_feasible else 0,
-        1 if ev.solver_status_ok else 0,
         passed,
         -float(ev.computed_objective_value),
     )

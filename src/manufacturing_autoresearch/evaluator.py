@@ -6,6 +6,7 @@ from .types import EvaluationReport, ProblemDefinition, RuleCheck, SolverResult
 
 
 OK_STATUSES = {"optimal", "feasible"}
+TOL = 1e-9
 
 
 def evaluate_result(problem: ProblemDefinition, result: SolverResult) -> EvaluationReport:
@@ -22,18 +23,28 @@ def evaluate_result(problem: ProblemDefinition, result: SolverResult) -> Evaluat
     solver_status_ok = result.solver_status in OK_STATUSES
     objective_terms = compute_objective_terms(problem, result.assignments)
     computed = float(sum(objective_terms.values()))
+    reported = result.objective_value
+
     violations = []
     if not solver_status_ok:
         violations.append(f"solver status is '{result.solver_status}', expected feasible/optimal")
     violations.extend(c.details for c in checks if not c.passed)
+
+    objective_consistent = reported is None or abs(float(reported) - computed) <= TOL
+    if reported is not None and not objective_consistent:
+        violations.append(
+            "reported objective does not match evaluator-computed objective; model likely omits active objective terms"
+        )
+
     is_feasible = solver_status_ok and all(c.passed for c in checks)
-    is_acceptable = is_feasible
+    is_acceptable = is_feasible and objective_consistent
+
     return EvaluationReport(
         is_feasible=is_feasible,
         is_acceptable=is_acceptable,
         solver_status_ok=solver_status_ok,
         computed_objective_value=computed,
-        reported_objective_value=result.objective_value,
+        reported_objective_value=reported,
         objective_terms=objective_terms,
         rule_checks=checks,
         violations=violations,

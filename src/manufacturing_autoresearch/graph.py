@@ -9,7 +9,7 @@ from .llm import LLMClient
 from .logging_utils import dump_json, ensure_dir
 from .preflight import run_preflight
 from .selector import should_accept_candidate
-from .types import IterationRecord, ProblemDefinition, RunState, Settings
+from .types import IterationRecord, ProblemDefinition, RunState, Settings, SolverResult
 
 
 def build_graph(settings: Settings, run_dir: Path):
@@ -44,7 +44,6 @@ def build_graph(settings: Settings, run_dir: Path):
             if candidate_preflight.ok:
                 candidate_result = execute_program(problem, candidate_program)
             else:
-                from .types import SolverResult
                 candidate_result = SolverResult(solver_status="preflight_error", objective_value=None, assignments=[], notes=candidate_preflight.errors)
             candidate_evaluation = evaluate_result(problem, candidate_result)
             decision = should_accept_candidate(candidate_evaluation, state.best_evaluation)
@@ -54,11 +53,19 @@ def build_graph(settings: Settings, run_dir: Path):
                 state.best_preflight = candidate_preflight
                 state.best_result = candidate_result
                 state.best_evaluation = candidate_evaluation
+            if not candidate_evaluation.is_feasible:
+                failure_type = "infeasible_or_invalid"
+            elif not candidate_evaluation.is_acceptable:
+                failure_type = "objective_mismatch_or_incomplete_model"
+            elif not accepted:
+                failure_type = "no_improvement"
+            else:
+                failure_type = "accepted"
             repair_signal = {
-                "failure_type": "no_improvement" if not accepted else "accepted",
+                "failure_type": failure_type,
                 "must_fix": ["Preserve the current best behavior and improve only one weakness."],
                 "forbidden_patterns": ["```", "data['problem']", 'data["problem"]'],
-                "last_traceback": "\n".join(candidate_result.notes),
+                "last_traceback": "\n" .join(candidate_result.notes),
                 "summary": decision.reason,
             }
             rec = IterationRecord(

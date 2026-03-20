@@ -3,10 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class ProblemDefinition(BaseModel):
+class CoreModel(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class ProblemDefinition(CoreModel):
     name: str
     description: str
     entities: dict[str, list[Any]]
@@ -14,39 +18,39 @@ class ProblemDefinition(BaseModel):
     evaluation_framework: dict[str, Any]
 
 
-class ProgramProposal(BaseModel):
+class ProgramProposal(CoreModel):
     explanation: str
     model_logic: str
     expected_failure_modes: list[str] = Field(default_factory=list)
 
 
-class PreflightReport(BaseModel):
+class PreflightReport(CoreModel):
     ok: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     normalized_code: str = ""
 
 
-class Assignment(BaseModel):
+class Assignment(CoreModel):
     job: str
     machine: str
     slot: int
 
 
-class SolverResult(BaseModel):
+class SolverResult(CoreModel):
     solver_status: str
     objective_value: float | None = None
     assignments: list[Assignment] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 
-class RuleCheck(BaseModel):
+class RuleCheck(CoreModel):
     rule_id: str
     passed: bool
     details: str
 
 
-class EvaluationReport(BaseModel):
+class EvaluationReport(CoreModel):
     is_feasible: bool
     is_acceptable: bool
     solver_status_ok: bool
@@ -58,14 +62,14 @@ class EvaluationReport(BaseModel):
     summary: str
 
 
-class CandidateDecision(BaseModel):
+class CandidateDecision(CoreModel):
     accepted: bool
     reason: str
     candidate_score: tuple[int, int, int, float]
     best_score_before: tuple[int, int, int, float]
 
 
-class IterationRecord(BaseModel):
+class IterationRecord(CoreModel):
     iteration: int
     candidate_program: ProgramProposal
     candidate_preflight: PreflightReport
@@ -77,7 +81,7 @@ class IterationRecord(BaseModel):
     repair_signal: dict[str, Any]
 
 
-class RunState(BaseModel):
+class RunState(CoreModel):
     problem: ProblemDefinition
     current_iteration: int = 0
     max_iterations: int = 5
@@ -95,7 +99,7 @@ class RunState(BaseModel):
     final_message: str = ""
 
 
-class Settings(BaseModel):
+class Settings(CoreModel):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     max_iterations: int = 5

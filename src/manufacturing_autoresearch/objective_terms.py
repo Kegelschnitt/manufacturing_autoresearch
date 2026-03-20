@@ -27,8 +27,17 @@ def changeover_penalty(problem: ProblemDefinition, assignments: list[Assignment]
     return total
 
 
-def compute_objective_terms(problem: ProblemDefinition, assignments: list[Assignment]) -> dict[str, float]:
+def build_objective_registry():
     return {
-        "assignment_cost": assignment_cost(problem, assignments),
-        "changeover_penalty": changeover_penalty(problem, assignments),
+        "assignment_cost": assignment_cost,
+        "changeover_penalty": changeover_penalty,
     }
+
+
+def compute_objective_terms(problem: ProblemDefinition, assignments: list[Assignment]) -> dict[str, float]:
+    registry = build_objective_registry()
+    terms = {"assignment_cost": registry["assignment_cost"](problem, assignments)}
+    objective_id = str(problem.evaluation_framework.get("objective", {}).get("id", "")).lower()
+    if "changeover" in objective_id:
+        terms["changeover_penalty"] = registry["changeover_penalty"](problem, assignments)
+    return terms
