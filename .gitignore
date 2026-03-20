@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+
+# Mac
+.DS_Store
+
+# Runs / outputs
+runs/
+*.log
+
+# VS Code
+.vscode/
+
+# Build
+dist/
+build/
+*.egg-info/
