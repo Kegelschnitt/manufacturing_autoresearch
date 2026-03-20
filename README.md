@@ -137,3 +137,19 @@ Problems are defined as JSON:
     "objective": {...}
   }
 }
+
+## Quick start
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e .
+
+cp .env.example .env
+# add your OPENAI_API_KEY
+
+python -m manufacturing_autoresearch.main \
+  --problem configs/changeover_problem.json \
+  --out runs/example \
+  --max-iters 3
+```
