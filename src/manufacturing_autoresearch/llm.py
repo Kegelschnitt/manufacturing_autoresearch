@@ -12,6 +12,33 @@ from .types import ProblemDefinition, ProgramProposal
 load_dotenv()
 
 
+LESSON_SELECTOR_SYSTEM_PROMPT = """You are selecting modeling lessons for a MILP repair loop.
+
+Return ONLY valid JSON with this schema:
+{
+  "selected_lessons": [
+    {
+      "lesson_id": "string",
+      "priority": 1,
+      "reason": "string"
+    }
+  ],
+  "rejected_lessons": [
+    {
+      "lesson_id": "string",
+      "reason": "string"
+    }
+  ]
+}
+
+Rules:
+- Choose at most 4 lessons.
+- Prefer lessons that match the active objective, failure type, violations, warnings, and traceback.
+- Reject irrelevant lessons.
+- Prefer specific lessons over generic ones when possible.
+"""
+
+
 REASONING_SYSTEM_PROMPT = """You are a MILP modeling assistant for manufacturing scheduling.
 
 Your job is NOT to write code yet.
@@ -237,3 +264,48 @@ class LLMClient:
         )
 
         return candidate, reasoning_plan
+    
+    def select_lessons(
+        self,
+        problem,
+        repair_signal,
+        proposer_guidance,
+        available_lessons,
+        run_memory=None,
+    ):
+        if not self.client:
+            return []
+
+        user_prompt = {
+            "problem_definition": problem.model_dump(),
+            "repair_signal": repair_signal,
+            "proposer_guidance": proposer_guidance,
+            "available_lessons": available_lessons,
+            "run_memory": run_memory or {},
+        }
+
+        try:
+            response = self.client.responses.create(
+                model=self.model,
+                input=[
+                    {"role": "system", "content": LESSON_SELECTOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                ],
+            )
+            text = (response.output_text or "").strip()
+            parsed = json.loads(text)
+            selected = parsed.get("selected_lessons", [])
+            selected_ids = [item["lesson_id"] for item in selected if "lesson_id" in item]
+
+            lesson_map = {lesson["lesson_id"]: lesson for lesson in available_lessons}
+            resolved = []
+            for item in selected:
+                lid = item.get("lesson_id")
+                if lid in lesson_map:
+                    lesson = dict(lesson_map[lid])
+                    lesson["llm_priority"] = item.get("priority")
+                    lesson["llm_reason"] = item.get("reason", "")
+                    resolved.append(lesson)
+            return resolved
+        except Exception:
+            return []

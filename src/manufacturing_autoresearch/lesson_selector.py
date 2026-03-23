@@ -17,8 +17,42 @@ def _missing_terms(repair_signal: dict[str, Any]) -> set[str]:
         if item.get("term")
     }
 
+def select_lessons(
+    repair_signal,
+    proposer_guidance=None,
+    run_memory=None,
+    llm=None,
+    problem=None,
+    available_lessons=None,
+):
+    # Fallback: build lessons if not provided
+    if available_lessons is None:
+        available_lessons = list(build_modeling_lessons().values())
 
-def select_modeling_lessons(
+    # If LLM available → use it
+    if llm is not None and problem is not None:
+        try:
+            selected = llm.select_lessons(
+                problem=problem,
+                repair_signal=repair_signal,
+                proposer_guidance=proposer_guidance,
+                available_lessons=available_lessons,
+                run_memory=run_memory or {},
+            )
+            if selected:
+                return selected
+        except Exception:
+            pass
+
+    # Fallback to heuristic
+    return heuristic_select_lessons(
+        repair_signal=repair_signal,
+        proposer_guidance=proposer_guidance,
+        run_memory=run_memory,
+    )
+
+
+def heuristic_select_lessons(
     repair_signal: dict[str, Any] | None,
     proposer_guidance: dict[str, Any] | None = None,
     run_memory: dict[str, Any] | None = None,

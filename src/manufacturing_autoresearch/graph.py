@@ -3,12 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from manufacturing_autoresearch.modeling_lessons import build_modeling_lessons
-
 from .baseline import baseline_program
 from .evaluator import evaluate_result
 from .execution import execute_program
-from .lesson_selector import select_modeling_lessons
+from .modeling_lessons import build_modeling_lessons
 from .llm import LLMClient
 from .logging_utils import dump_json, ensure_dir
 from .preflight import run_preflight
@@ -370,7 +368,7 @@ def build_graph(settings: Settings, run_dir: Path):
                 evaluation=state.best_evaluation.model_dump() if state.best_evaluation else None,
             )
             run_memory = _build_run_memory(state)
-            selected_modeling_lessons = select_modeling_lessons(
+            selected_modeling_lessons = select_lessons(
                 repair_signal=state.repair_signal,
                 proposer_guidance=proposer_guidance,
                 run_memory=run_memory,
