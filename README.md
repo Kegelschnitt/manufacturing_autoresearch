@@ -1,143 +1,126 @@
-# Manufacturing Auto-Research (MILP Self-Improving System)
+# Manufacturing Autoresearch
 
-This project implements a **self-improving MILP (Mixed-Integer Linear Programming) generation loop** powered by an LLM.
+## Overview
 
-The system iteratively:
-1. Generates a MILP model
-2. Executes it
-3. Evaluates feasibility and objective correctness
-4. Uses structured feedback to improve the model
+This project implements an **iterative MILP self-repair system** for manufacturing scheduling problems.
 
----
+Instead of generating a single optimization model, the system:
 
-## 🚀 Overview
-
-The goal is to automatically construct correct and optimal MILP formulations for manufacturing scheduling problems.
-
-Key idea:
-> The LLM does not just generate code — it **learns from evaluation feedback** and incrementally improves the optimization model.
+1. Generates a baseline MILP
+2. Executes and evaluates it
+3. Diagnoses issues
+4. Selects relevant modeling lessons
+5. Uses an LLM to propose targeted fixes
+6. Repeats until an acceptable solution is found
 
 ---
 
-## 🔁 Iterative Loop
+## Key Idea
 
-Each iteration performs:
+> Combine structured evaluation + reusable modeling knowledge + LLM reasoning to iteratively repair optimization models.
 
-1. **Propose**
-   - LLM generates a new MILP formulation
-
-2. **Preflight**
-   - Validate syntax and structure
-
-3. **Execute**
-   - Solve using PuLP
-
-4. **Evaluate**
-   - Check:
-     - hard constraints (rules)
-     - objective correctness
-     - feasibility
-
-5. **Repair Signal**
-   - Structured feedback describing:
-     - rule violations
-     - missing objective terms
-     - runtime errors
-     - structural issues
-
-6. **Update Best Solution**
-   - Accept candidate if it improves evaluation score
+This system behaves like an **autonomous MILP debugger**.
 
 ---
 
-## 🧠 Key Components
+## Architecture
 
-### `graph.py`
-Core orchestration loop:
-- Runs iterations
-- Tracks best solution
-- Generates repair signals
-- Logs progress
+### Repair Loop
 
----
+`baseline -> evaluate -> repair_signal -> select_lessons -> propose -> repeat`
 
-### `llm.py`
-Handles LLM interaction:
-- **Reasoning step** → what to fix
-- **Code generation step** → improved MILP
+### Components
 
----
+- **Evaluation Engine**  
+  Detects feasibility, rule violations, and objective mismatch.
 
-### `evaluation_rules.py`
-Defines **hard constraints**:
-- job assigned once
-- machine capacity
-- eligibility
+- **Repair Signal**  
+  Structured diagnostics such as:
+  - failure type
+  - missing objective terms
+  - violated rules
+  - infeasibility hints
 
-Each rule includes:
-- description
-- evaluation logic
-- modeling hints
+- **Modeling Lessons**  
+  Reusable MILP modeling patterns, for example tardiness, sparse indexing, and objective construction.
 
----
+- **Lesson Selector**
+  - heuristic fallback
+  - **LLM-based selector (main)**
 
-### `objective_terms.py`
-Defines **objective components**:
-- assignment cost
-- changeover penalty
-
-Each term includes:
-- modeling hints
-- required variables
-- dependencies
+- **LLM Proposer**
+  - reasoning phase: what to fix
+  - code generation phase: apply the fix
 
 ---
 
-### `proposer_guidance.py`
-Builds structured input for the LLM:
-- active rules
-- active objective terms
-- modeling hints
-- latest evaluation feedback
+## LLM Lesson Selector
 
----
+The selector receives:
 
-### `evaluator.py`
-Evaluates solver output:
-- feasibility
-- rule satisfaction
-- objective correctness
+- problem definition
+- repair signal
+- proposer guidance
+- run memory (history)
+- available lessons
+- **current MILP code**
 
----
-
-### `baseline.py`
-Provides initial MILP model.
-
----
-
-## 📦 Problem Format
-
-Problems are defined as JSON:
+Returns:
 
 ```json
 {
-  "name": "...",
-  "entities": {
-    "jobs": [...],
-    "machines": [...],
-    "slots": [...]
-  },
-  "parameters": {
-    "cost": {...},
-    "eligible": {...},
-    "changeover_penalty": 3
-  },
-  "evaluation_framework": {
-    "hard_rules": [...],
-    "objective": {...}
-  }
+  "selected_lessons": [
+    {
+      "lesson_id": "...",
+      "priority": 10,
+      "reason": "..."
+    }
+  ]
 }
 ```
+
+Priorities and reasons are logged for interpretability.
+
+---
+
+## Logging
+
+Each iteration produces:
+
+- `iteration_X.json` -> full state
+- `iteration_XXX_summary.json` -> compact summary
+
+Includes:
+
+- solver status
+- objective values
+- failure type
+- selected lessons
+- **lesson reasons (LLM and heuristic)**
+
+Example:
+
+```text
+lessons=tardiness_requires_slot_based_penalty (reason...)
+```
+
+---
+
+## Example Result
+
+Tardiness benchmark:
+
+- Baseline objective: **15**
+- Final objective: **10**
+- Solved in **1 iteration**
+
+The system correctly:
+
+- detected objective mismatch
+- selected relevant lessons
+- fixed objective construction
+
+---
 
 ## Quick start
 
@@ -155,3 +138,22 @@ python -m manufacturing_autoresearch.main \
   --out runs/example \
   --max-iters 3
 ```
+
+---
+
+## Requirements
+
+- Python 3.10+
+- PuLP
+- OpenAI Python SDK
+- python-dotenv
+
+---
+
+## Summary
+
+An **autonomous MILP debugger** that improves optimization models using:
+
+- structured feedback
+- reusable modeling knowledge
+- LLM-guided reasoning
