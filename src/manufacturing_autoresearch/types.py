@@ -79,6 +79,8 @@ class IterationRecord(CoreModel):
     decision: CandidateDecision
     best_evaluation_after: EvaluationReport
     repair_signal: dict[str, Any]
+    selected_modeling_lessons: list[dict[str, Any]] = Field(default_factory=list)
+    reasoning_plan: dict[str, Any] = Field(default_factory=dict)
 
 
 class RunState(CoreModel):

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import ast
 import json
 from pathlib import Path
-from typing import Any
-
-from rich import print
 
 from .baseline import baseline_program
 from .evaluator import evaluate_result
 from .execution import execute_program
+from .lesson_selector import select_modeling_lessons
 from .llm import LLMClient
 from .logging_utils import dump_json, ensure_dir
 from .preflight import run_preflight
@@ -20,145 +17,6 @@ from .types import IterationRecord, ProblemDefinition, RunState, Settings, Solve
 
 def _normalized(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
-
-
-def _safe_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except Exception:
-        return None
-
-
-def _objective_value_for_log(evaluation) -> float | None:
-    value = _safe_float(getattr(evaluation, "computed_objective_value", None))
-    if value is not None:
-        return value
-    return _safe_float(getattr(evaluation, "reported_objective_value", None))
-
-
-def _compact_eval_summary(evaluation) -> dict[str, Any]:
-    return {
-        "is_feasible": bool(getattr(evaluation, "is_feasible", False)),
-        "is_acceptable": bool(getattr(evaluation, "is_acceptable", False)),
-        "solver_status_ok": bool(getattr(evaluation, "solver_status_ok", False)),
-        "computed_objective_value": _safe_float(getattr(evaluation, "computed_objective_value", None)),
-        "reported_objective_value": _safe_float(getattr(evaluation, "reported_objective_value", None)),
-        "objective_terms": dict(getattr(evaluation, "objective_terms", {}) or {}),
-        "violations": list(getattr(evaluation, "violations", []) or []),
-        "summary": getattr(evaluation, "summary", ""),
-    }
-
-
-def _extract_structure_features(code: str) -> dict[str, Any]:
-    features: dict[str, Any] = {
-        "imports": [],
-        "function_names": [],
-        "lpvariable_targets": [],
-        "constraint_names": [],
-        "objective_labels": [],
-        "context_keys": [],
-        "mentions": {
-            "lpvariable": "LpVariable" in code,
-            "lpsum": "lpSum" in code,
-            "changeover": "changeover" in code.lower(),
-            "constraint_capacity": "capacity_" in code,
-            "constraint_job_once": "job_once_" in code,
-        },
-    }
-    try:
-        tree = ast.parse(code)
-    except Exception:
-        return features
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            features["function_names"].append(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                features["imports"].append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            mod = node.module or ""
-            for alias in node.names:
-                features["imports"].append(f"{mod}:{alias.name}")
-        elif isinstance(node, ast.Call):
-            func_name = ""
-            if isinstance(node.func, ast.Attribute):
-                func_name = node.func.attr
-            elif isinstance(node.func, ast.Name):
-                func_name = node.func.id
-
-            if func_name == "LpVariable" and node.args:
-                first = node.args[0]
-                if isinstance(first, ast.JoinedStr):
-                    text_bits = []
-                    for value in first.values:
-                        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                            text_bits.append(value.value)
-                    features["lpvariable_targets"].append("".join(text_bits))
-                elif isinstance(first, ast.Constant) and isinstance(first.value, str):
-                    features["lpvariable_targets"].append(first.value)
-
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name) and target.value.id == "context":
-                    key = None
-                    sl = target.slice
-                    if isinstance(sl, ast.Constant) and isinstance(sl.value, str):
-                        key = sl.value
-                    elif hasattr(ast, "Index") and isinstance(sl, ast.Index) and isinstance(sl.value, ast.Constant) and isinstance(sl.value.value, str):
-                        key = sl.value.value
-                    if key is not None:
-                        features["context_keys"].append(key)
-
-    for label in ["total_cost", "total_assignment_cost", "total_cost_with_changeover", "total_cost_with_setup"]:
-        if label in code:
-            features["objective_labels"].append(label)
-
-    for prefix in ["capacity_", "job_once_", "link", "linking", "changeover_link_"]:
-        if prefix in code:
-            features["constraint_names"].append(prefix)
-
-    for key, value in features.items():
-        if isinstance(value, list):
-            features[key] = sorted(set(value))
-    return features
-
-
-def _candidate_changed_structure(candidate_code: str, reference_code: str) -> bool:
-    candidate_norm = _normalized(candidate_code)
-    reference_norm = _normalized(reference_code)
-    if candidate_norm == reference_norm:
-        return False
-    return _extract_structure_features(candidate_norm) != _extract_structure_features(reference_norm)
-
-
-def _top_violation(evaluation) -> str | None:
-    violations = list(getattr(evaluation, "violations", []) or [])
-    return violations[0] if violations else None
-
-
-def _build_run_memory(state: RunState) -> dict[str, Any]:
-    recent_iterations: list[dict[str, Any]] = []
-    for rec in state.history[-3:]:
-        recent_iterations.append(
-            {
-                "iteration": rec.iteration,
-                "accepted": rec.accepted_as_best,
-                "solver_status": rec.candidate_result.solver_status,
-                "computed_objective_value": _safe_float(rec.candidate_evaluation.computed_objective_value),
-                "reported_objective_value": _safe_float(rec.candidate_evaluation.reported_objective_value),
-                "violations": list(rec.candidate_evaluation.violations or []),
-                "failure_type": rec.repair_signal.get("failure_type", ""),
-                "candidate_changed_structure": bool(rec.repair_signal.get("candidate_changed_structure", False)),
-            }
-        )
-    return {
-        "current_iteration": state.current_iteration,
-        "best_evaluation": _compact_eval_summary(state.best_evaluation),
-        "recent_iterations": recent_iterations,
-    }
 
 
 def _classify_failure(candidate_preflight, candidate_result, candidate_evaluation) -> str:
@@ -173,19 +31,122 @@ def _classify_failure(candidate_preflight, candidate_result, candidate_evaluatio
     return "no_improvement"
 
 
+def _build_run_memory(state: RunState) -> dict:
+    recent = state.history[-3:]
+
+    persistent_failure_types = []
+    persistent_missing_terms = set()
+
+    rules_already_satisfied = []
+    if state.best_evaluation:
+        rules_already_satisfied = [
+            rc.rule_id for rc in state.best_evaluation.rule_checks if rc.passed
+        ]
+
+    for rec in recent:
+        ft = rec.repair_signal.get("failure_type")
+        if ft:
+            persistent_failure_types.append(ft)
+
+        for item in rec.repair_signal.get("missing_objective_terms", []):
+            term = item.get("term")
+            if term:
+                persistent_missing_terms.add(term)
+
+    return {
+        "iterations_seen": state.current_iteration,
+        "persistent_failure_types": persistent_failure_types,
+        "persistent_missing_objective_terms": sorted(persistent_missing_terms),
+        "rules_already_satisfied": rules_already_satisfied,
+        "recent_attempt_summaries": [
+            {
+                "iteration": rec.iteration,
+                "failure_type": rec.repair_signal.get("failure_type"),
+                "candidate_changed_structure": rec.repair_signal.get("candidate_changed_structure"),
+                "missing_objective_terms": [
+                    item.get("term")
+                    for item in rec.repair_signal.get("missing_objective_terms", [])
+                ],
+                "selected_modeling_lesson_ids": [
+                    item.get("lesson_id")
+                    for item in (rec.selected_modeling_lessons or [])
+                    if isinstance(item, dict) and item.get("lesson_id")
+                ],
+            }
+            for rec in recent
+        ],
+    }
+
+
+def _objective_terms_text(candidate_evaluation) -> str:
+    terms = candidate_evaluation.objective_terms or {}
+    if not terms:
+        return "terms=(none)"
+    inner = ", ".join(f"{k}={float(v)}" for k, v in terms.items())
+    return f"terms=({inner})"
+
+
+def _print_start(problem: ProblemDefinition, settings: Settings) -> None:
+    print(f"[start] problem={problem.name} | max_iterations={settings.max_iterations}")
+
+
+def _print_baseline(best_result, best_evaluation) -> None:
+    print(
+        "[baseline] "
+        f"status={best_result.solver_status} | "
+        f"feasible={best_evaluation.is_feasible} | "
+        f"acceptable={best_evaluation.is_acceptable} | "
+        f"objective={best_evaluation.computed_objective_value}"
+    )
+
+
+def _print_live_iteration_update(
+    i,
+    candidate_result,
+    candidate_evaluation,
+    decision,
+    repair_signal,
+) -> None:
+    terms_text = _objective_terms_text(candidate_evaluation)
+    print(
+        f"[iter {i + 1}] "
+        f"status={candidate_result.solver_status} | "
+        f"feasible={candidate_evaluation.is_feasible} | "
+        f"acceptable={candidate_evaluation.is_acceptable} | "
+        f"objective={candidate_evaluation.computed_objective_value} | "
+        f"accepted={decision.accepted} | "
+        f"failure_type={repair_signal.get('failure_type')} | "
+        f"changed_structure={repair_signal.get('candidate_changed_structure')} | "
+        f"{terms_text}"
+    )
+
+    violations = candidate_evaluation.violations or []
+    if violations:
+        print(f"  top_violation={violations[0]}")
+
+    selected_lessons = repair_signal.get("selected_modeling_lessons", []) or []
+    if selected_lessons:
+        lesson_ids = ", ".join(
+            item.get("lesson_id", "")
+            for item in selected_lessons[:3]
+            if item.get("lesson_id")
+        )
+        if lesson_ids:
+            print(f"  lessons={lesson_ids}")
+
+
 def _build_repair_signal(
     problem,
     candidate_program,
     candidate_result,
     candidate_evaluation,
     decision,
-    previous_best_program,
+    best_program,
     candidate_preflight,
-    proposer_guidance: dict[str, Any],
-    candidate_changed_structure: bool,
-    accepted: bool,
+    proposer_guidance,
+    selected_modeling_lessons,
 ):
-    if accepted:
+    if decision.accepted and candidate_evaluation.is_acceptable:
         return {
             "failure_type": None,
             "summary": "Accepted solution found.",
@@ -199,23 +160,15 @@ def _build_repair_signal(
             "current_assignments": [a.model_dump() for a in candidate_result.assignments],
             "forbidden_patterns": ["```", "data['problem']", 'data["problem"]'],
             "last_traceback": "\n".join(candidate_result.notes),
-            "modeling_guidance": [
-                "Current best candidate is accepted.",
-                "Further iterations should only continue if you intentionally search for a strictly better evaluator objective.",
-            ],
+            "modeling_guidance": [],
             "latest_rule_checks": [rc.model_dump() for rc in candidate_evaluation.rule_checks],
             "latest_objective_terms": dict(candidate_evaluation.objective_terms),
             "problem_objective": problem.evaluation_framework.get("objective", {}),
-            "current_best_code_preview": _normalized(candidate_program.model_logic)[:4000],
-            "candidate_changed_structure": candidate_changed_structure,
-            "problem_active_rule_ids": list(proposer_guidance.get("problem_active_rule_ids", [])),
+            "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
+            "candidate_changed_structure": _normalized(candidate_program.model_logic) != _normalized(best_program.model_logic),
+            "selected_modeling_lessons": selected_modeling_lessons,
+            "problem_active_rule_ids": proposer_guidance.get("problem_active_rule_ids", []),
             "problem_active_objective_id": proposer_guidance.get("problem_active_objective_id", ""),
-            "active_rules_guidance": proposer_guidance.get("active_rules_guidance", []),
-            "active_objective_guidance": proposer_guidance.get("active_objective_guidance", []),
-            "latest_rule_results_from_guidance": proposer_guidance.get("latest_rule_results", []),
-            "latest_objective_terms_from_guidance": proposer_guidance.get("latest_objective_terms", {}),
-            "latest_violations_from_guidance": proposer_guidance.get("latest_violations_from_guidance", []),
-            "latest_acceptability_from_guidance": proposer_guidance.get("latest_acceptability_from_guidance", {}),
         }
 
     failure_type = _classify_failure(candidate_preflight, candidate_result, candidate_evaluation)
@@ -253,7 +206,9 @@ def _build_repair_signal(
                     }
                 )
 
-    if (not candidate_changed_structure) and failure_type in {"objective_mismatch", "no_improvement"}:
+    novelty = _normalized(candidate_program.model_logic) != _normalized(best_program.model_logic)
+
+    if not novelty and failure_type in {"objective_mismatch", "no_improvement"}:
         failure_type = "no_structural_change"
 
     if failure_type == "rule_violation":
@@ -322,56 +277,16 @@ def _build_repair_signal(
         "latest_rule_checks": [rc.model_dump() for rc in candidate_evaluation.rule_checks],
         "latest_objective_terms": objective_terms,
         "problem_objective": problem.evaluation_framework.get("objective", {}),
-        "current_best_code_preview": _normalized(previous_best_program.model_logic)[:4000],
-        "candidate_changed_structure": candidate_changed_structure,
-        "problem_active_rule_ids": list(proposer_guidance.get("problem_active_rule_ids", [])),
+        "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
+        "candidate_changed_structure": novelty,
+        "selected_modeling_lessons": selected_modeling_lessons,
+        "problem_active_rule_ids": proposer_guidance.get("problem_active_rule_ids", []),
         "problem_active_objective_id": proposer_guidance.get("problem_active_objective_id", ""),
         "active_rules_guidance": proposer_guidance.get("active_rules_guidance", []),
         "active_objective_guidance": proposer_guidance.get("active_objective_guidance", []),
         "latest_rule_results_from_guidance": proposer_guidance.get("latest_rule_results", []),
         "latest_objective_terms_from_guidance": proposer_guidance.get("latest_objective_terms", {}),
-        "latest_violations_from_guidance": proposer_guidance.get("latest_violations_from_guidance", []),
-        "latest_acceptability_from_guidance": proposer_guidance.get("latest_acceptability_from_guidance", {}),
     }
-
-
-def _write_iteration_debug(run_dir: Path, iteration_index: int, payload: dict[str, Any]) -> None:
-    debug_dir = run_dir / "iteration_debug"
-    ensure_dir(debug_dir)
-    path = debug_dir / f"iteration_{iteration_index:03d}_summary.json"
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def _log_start(problem: ProblemDefinition, settings: Settings) -> None:
-    print(f"[start] problem={problem.name} | max_iterations={settings.max_iterations}")
-
-
-def _log_baseline(best_result, best_evaluation) -> None:
-    print(
-        f"[baseline] status={best_result.solver_status} | "
-        f"feasible={best_evaluation.is_feasible} | "
-        f"acceptable={best_evaluation.is_acceptable} | "
-        f"objective={_objective_value_for_log(best_evaluation)}"
-    )
-
-
-def _log_iteration(iteration_number: int, candidate_result, candidate_evaluation, accepted: bool, repair_signal: dict[str, Any]) -> None:
-    top_violation = _top_violation(candidate_evaluation)
-    objective_terms = dict(getattr(candidate_evaluation, "objective_terms", {}) or {})
-    terms_text = ", ".join(f"{k}={v}" for k, v in objective_terms.items()) if objective_terms else "no_terms"
-    msg = (
-        f"[iter {iteration_number}] status={candidate_result.solver_status} | "
-        f"feasible={candidate_evaluation.is_feasible} | "
-        f"acceptable={candidate_evaluation.is_acceptable} | "
-        f"objective={_objective_value_for_log(candidate_evaluation)} | "
-        f"accepted={accepted} | "
-        f"failure_type={repair_signal.get('failure_type')} | "
-        f"changed_structure={repair_signal.get('candidate_changed_structure')} | "
-        f"terms=({terms_text})"
-    )
-    if top_violation:
-        msg += f" | top_violation={top_violation}"
-    print(msg)
 
 
 def build_graph(settings: Settings, run_dir: Path):
@@ -379,14 +294,15 @@ def build_graph(settings: Settings, run_dir: Path):
     llm = LLMClient()
 
     def run(problem: ProblemDefinition) -> RunState:
-        _log_start(problem, settings)
+        _print_start(problem, settings)
 
         best_program = baseline_program()
         best_preflight = run_preflight(best_program)
         best_program.model_logic = best_preflight.normalized_code
         best_result = execute_program(problem, best_program)
         best_evaluation = evaluate_result(problem, best_result)
-        _log_baseline(best_result, best_evaluation)
+
+        _print_baseline(best_result, best_evaluation)
 
         state = RunState(
             problem=problem,
@@ -403,28 +319,31 @@ def build_graph(settings: Settings, run_dir: Path):
         )
 
         for i in range(settings.max_iterations):
-            previous_best_program = state.best_program.model_copy(deep=True)
             proposer_guidance = extract_proposer_guidance(
                 problem=problem.model_dump(),
-                evaluation=state.best_evaluation.model_dump(),
+                evaluation=state.best_evaluation.model_dump() if state.best_evaluation else None,
             )
             run_memory = _build_run_memory(state)
+            selected_modeling_lessons = select_modeling_lessons(
+                repair_signal=state.repair_signal,
+                proposer_guidance=proposer_guidance,
+                run_memory=run_memory,
+            )
+            proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
 
-            candidate_program = llm.propose(
+            candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
                 current_best=state.best_program,
                 repair_signal=state.repair_signal,
                 proposer_guidance=proposer_guidance,
                 run_memory=run_memory,
+                selected_modeling_lessons=selected_modeling_lessons,
             )
+
             candidate_preflight = run_preflight(candidate_program)
             candidate_program.model_logic = candidate_preflight.normalized_code
 
-            candidate_changed_structure = _candidate_changed_structure(
-                candidate_code=candidate_program.model_logic,
-                reference_code=previous_best_program.model_logic,
-            )
-            same_as_best = _normalized(candidate_program.model_logic) == _normalized(previous_best_program.model_logic)
+            same_as_best = _normalized(candidate_program.model_logic) == _normalized(state.best_program.model_logic)
 
             if same_as_best and state.repair_signal.get("failure_type") in {"objective_mismatch", "no_structural_change"}:
                 candidate_result = SolverResult(
@@ -433,6 +352,8 @@ def build_graph(settings: Settings, run_dir: Path):
                     assignments=[],
                     notes=["Candidate code was effectively identical to current best and was rejected before execution."],
                 )
+                if isinstance(reasoning_plan, dict):
+                    candidate_result.notes.append("reasoning_plan=" + json.dumps(reasoning_plan, ensure_ascii=False))
                 candidate_evaluation = state.best_evaluation
                 decision = should_accept_candidate(candidate_evaluation, state.best_evaluation)
                 decision.accepted = False
@@ -448,9 +369,18 @@ def build_graph(settings: Settings, run_dir: Path):
                         assignments=[],
                         notes=candidate_preflight.errors,
                     )
+                if isinstance(reasoning_plan, dict):
+                    candidate_result.notes.append("reasoning_plan=" + json.dumps(reasoning_plan, ensure_ascii=False))
                 candidate_evaluation = evaluate_result(problem, candidate_result)
                 decision = should_accept_candidate(candidate_evaluation, state.best_evaluation)
                 accepted = decision.accepted
+
+            best_program_for_signal = state.best_program
+            if accepted:
+                state.best_program = candidate_program
+                state.best_preflight = candidate_preflight
+                state.best_result = candidate_result
+                state.best_evaluation = candidate_evaluation
 
             repair_signal = _build_repair_signal(
                 problem=problem,
@@ -458,20 +388,20 @@ def build_graph(settings: Settings, run_dir: Path):
                 candidate_result=candidate_result,
                 candidate_evaluation=candidate_evaluation,
                 decision=decision,
-                previous_best_program=previous_best_program,
+                best_program=best_program_for_signal,
                 candidate_preflight=candidate_preflight,
                 proposer_guidance=proposer_guidance,
-                candidate_changed_structure=candidate_changed_structure,
-                accepted=accepted,
+                selected_modeling_lessons=selected_modeling_lessons,
             )
 
-            if accepted:
-                state.best_program = candidate_program
-                state.best_preflight = candidate_preflight
-                state.best_result = candidate_result
-                state.best_evaluation = candidate_evaluation
+            state.latest_program = candidate_program
+            state.latest_preflight = candidate_preflight
+            state.latest_result = candidate_result
+            state.latest_evaluation = candidate_evaluation
+            state.repair_signal = repair_signal
+            state.current_iteration = i + 1
 
-            rec = IterationRecord(
+            record = IterationRecord(
                 iteration=i,
                 candidate_program=candidate_program,
                 candidate_preflight=candidate_preflight,
@@ -481,43 +411,48 @@ def build_graph(settings: Settings, run_dir: Path):
                 decision=decision,
                 best_evaluation_after=state.best_evaluation,
                 repair_signal=repair_signal,
+                selected_modeling_lessons=selected_modeling_lessons,
+                reasoning_plan=reasoning_plan if isinstance(reasoning_plan, dict) else {},
             )
-            state.history.append(rec)
-            state.current_iteration = i + 1
-            state.repair_signal = repair_signal
-            state.latest_program = candidate_program
-            state.latest_preflight = candidate_preflight
-            state.latest_result = candidate_result
-            state.latest_evaluation = candidate_evaluation
+            state.history.append(record)
 
-            dump_json(run_dir / f"iteration_{i}.json", rec)
-            _write_iteration_debug(
-                run_dir=run_dir,
-                iteration_index=i,
-                payload={
+            dump_json(run_dir / f"iteration_{i}.json", record.model_dump())
+            dump_json(
+                run_dir / f"iteration_{i:03d}_summary.json",
+                {
                     "iteration": i,
+                    "candidate_solver_status": candidate_result.solver_status,
+                    "candidate_feasible": candidate_evaluation.is_feasible,
+                    "candidate_acceptable": candidate_evaluation.is_acceptable,
+                    "candidate_computed_objective": candidate_evaluation.computed_objective_value,
+                    "candidate_reported_objective": candidate_evaluation.reported_objective_value,
                     "accepted": accepted,
                     "decision_reason": decision.reason,
-                    "candidate_solver_status": candidate_result.solver_status,
-                    "candidate_changed_structure": candidate_changed_structure,
-                    "repair_signal": repair_signal,
-                    "candidate_evaluation": _compact_eval_summary(candidate_evaluation),
-                    "best_evaluation_after": _compact_eval_summary(state.best_evaluation),
+                    "failure_type": repair_signal.get("failure_type"),
+                    "selected_modeling_lesson_ids": [
+                        item.get("lesson_id")
+                        for item in selected_modeling_lessons
+                        if item.get("lesson_id")
+                    ],
+                    "missing_objective_terms": [
+                        item.get("term")
+                        for item in repair_signal.get("missing_objective_terms", [])
+                    ],
+                    "top_violation": (candidate_evaluation.violations or [None])[0],
                 },
             )
-            _log_iteration(i + 1, candidate_result, candidate_evaluation, accepted, repair_signal)
 
-            if state.best_evaluation.is_acceptable:
+            _print_live_iteration_update(
+                i=i,
+                candidate_result=candidate_result,
+                candidate_evaluation=candidate_evaluation,
+                decision=decision,
+                repair_signal=repair_signal,
+            )
+
+            if state.best_evaluation.is_acceptable and accepted:
                 state.stop = True
                 state.final_message = "Accepted solution found from current best solver."
-                state.repair_signal = {
-                    "failure_type": None,
-                    "summary": "Accepted solution found.",
-                    "latest_rule_checks": [rc.model_dump() for rc in state.best_evaluation.rule_checks],
-                    "latest_objective_terms": dict(state.best_evaluation.objective_terms),
-                    "current_assignments": [a.model_dump() for a in state.best_result.assignments],
-                    "candidate_changed_structure": candidate_changed_structure,
-                }
                 break
 
         if not state.stop:
