@@ -149,6 +149,7 @@ pip install -e .
 cp .env.example .env
 # add your OPENAI_API_KEY
 
+export PYTHONPATH=src
 python -m manufacturing_autoresearch.main \
   --problem configs/changeover_problem.json \
   --out runs/example \

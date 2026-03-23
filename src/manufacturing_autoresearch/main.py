@@ -34,7 +34,6 @@ def _build_short_terminal_summary(final_state_dict: dict[str, Any], out_dir: Pat
     latest_eval = final_state_dict.get("latest_evaluation") or {}
     latest_signal = final_state_dict.get("repair_signal") or {}
     best_result = final_state_dict.get("best_result") or {}
-
     latest_violations = latest_eval.get("violations") or []
 
     return {
@@ -66,7 +65,6 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
     repair_signal = final_state_dict.get("repair_signal") or {}
 
     lines: list[str] = []
-
     lines.append("# Final Accepted MILP Model")
     lines.append("")
     lines.append("## Overview")
@@ -115,9 +113,7 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
     assignments = best_result.get("assignments") or []
     if assignments:
         for item in assignments:
-            lines.append(
-                f"- job `{item.get('job')}` -> machine `{item.get('machine')}` at slot `{item.get('slot')}`"
-            )
+            lines.append(f"- job `{item.get('job')}` -> machine `{item.get('machine')}` at slot `{item.get('slot')}`")
     else:
         lines.append("- No assignments recorded.")
     lines.append("")
@@ -132,7 +128,7 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
         lines.append("- No notes.")
     lines.append("")
 
-    lines.append("## Latest Repair Signal Snapshot")
+    lines.append("## Final Repair Signal Snapshot")
     lines.append("")
     lines.append(f"- Failure type: `{repair_signal.get('failure_type', '')}`")
     lines.append(f"- Summary: {repair_signal.get('summary', '')}")
@@ -192,11 +188,9 @@ def main(
 ) -> None:
     settings = Settings(max_iterations=max_iters)
     ensure_dir(out)
-
     runner = build_graph(settings=settings, run_dir=out)
     problem_def = load_problem(problem)
     final_state = runner(problem_def)
-
     final_state_dict = final_state.model_dump()
 
     dump_json(out / "final_state.json", final_state)
@@ -204,7 +198,6 @@ def main(
     _save_final_milp_artifacts(out, final_state_dict)
 
     summary = _build_short_terminal_summary(final_state_dict, out)
-
     print("\n[bold green]Run finished.[/bold green]")
     print(json.dumps(summary, indent=2))
 
