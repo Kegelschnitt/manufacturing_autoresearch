@@ -324,6 +324,44 @@ def build_graph(settings: Settings, run_dir: Path):
             latest_evaluation=best_evaluation,
         )
 
+        # Early stop if the baseline is already acceptable.
+        if best_evaluation.is_feasible and best_evaluation.is_acceptable:
+            print("[stop] baseline already acceptable | no repair iterations needed")
+
+            state.stop = True
+            state.final_message = "Baseline solution already acceptable; no repair iterations needed."
+            state.repair_signal = {
+                "failure_type": None,
+                "summary": "Baseline solution already acceptable.",
+                "must_fix": [],
+                "violated_rules": [],
+                "missing_objective_terms": [],
+                "objective_mismatch": {
+                    "reported_objective_value": best_evaluation.reported_objective_value,
+                    "computed_objective_value": best_evaluation.computed_objective_value,
+                },
+                "current_assignments": [a.model_dump() for a in best_result.assignments],
+                "forbidden_patterns": ["```", "data['problem']", 'data["problem"]'],
+                "last_traceback": "\n".join(best_result.notes or []),
+                "modeling_guidance": [],
+                "latest_rule_checks": [rc.model_dump() for rc in best_evaluation.rule_checks],
+                "latest_objective_terms": dict(best_evaluation.objective_terms or {}),
+                "problem_objective": problem.evaluation_framework.get("objective", {}),
+                "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
+                "candidate_changed_structure": False,
+                "selected_modeling_lessons": [],
+                "infeasibility_diagnosis": list(best_evaluation.infeasibility_diagnosis or []),
+                "problem_active_rule_ids": [
+                    str(rule.get("id", ""))
+                    for rule in problem.evaluation_framework.get("hard_rules", [])
+                    if rule.get("id")
+                ],
+                "problem_active_objective_id": str(
+                    (problem.evaluation_framework.get("objective", {}) or {}).get("id", "")
+                ),
+            }
+            return state
+
         for i in range(settings.max_iterations):
             proposer_guidance = extract_proposer_guidance(
                 problem=problem.model_dump(),

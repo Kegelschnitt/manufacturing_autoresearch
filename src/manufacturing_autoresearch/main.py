@@ -29,14 +29,26 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _derive_solution_flags(final_state_dict: dict[str, Any]) -> dict[str, bool]:
+    best_eval = final_state_dict.get("best_evaluation") or {}
+    best_is_feasible = bool(best_eval.get("is_feasible", False))
+    best_is_acceptable = bool(best_eval.get("is_acceptable", False))
+    return {
+        "accepted_solution_found": best_is_feasible and best_is_acceptable,
+        "best_feasible_candidate_found": best_is_feasible,
+    }
+
+
 def _build_short_terminal_summary(final_state_dict: dict[str, Any], out_dir: Path) -> dict[str, Any]:
     best_eval = final_state_dict.get("best_evaluation") or {}
     latest_eval = final_state_dict.get("latest_evaluation") or {}
     latest_signal = final_state_dict.get("repair_signal") or {}
     best_result = final_state_dict.get("best_result") or {}
     latest_violations = latest_eval.get("violations") or []
+    flags = _derive_solution_flags(final_state_dict)
 
     return {
+        **flags,
         "final_message": final_state_dict.get("final_message"),
         "iterations_completed": final_state_dict.get("current_iteration"),
         "best_solver_status": best_result.get("solver_status"),
@@ -64,6 +76,7 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
     best_result = final_state_dict.get("best_result") or {}
     best_eval = final_state_dict.get("best_evaluation") or {}
     repair_signal = final_state_dict.get("repair_signal") or {}
+    flags = _derive_solution_flags(final_state_dict)
 
     lines: list[str] = []
     lines.append("# Final Accepted MILP Model")
@@ -72,6 +85,8 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"- Problem: `{problem.get('name', '')}`")
     lines.append(f"- Solver status: `{best_result.get('solver_status', '')}`")
+    lines.append(f"- Accepted solution found: `{flags['accepted_solution_found']}`")
+    lines.append(f"- Feasible candidate found: `{flags['best_feasible_candidate_found']}`")
     lines.append(f"- Reported objective value: `{best_result.get('objective_value', None)}`")
     lines.append(f"- Evaluator-computed objective value: `{best_eval.get('computed_objective_value', None)}`")
     lines.append("")
@@ -160,6 +175,7 @@ def _save_final_milp_artifacts(out_dir: Path, final_state_dict: dict[str, Any]) 
     best_program = final_state_dict.get("best_program") or {}
     best_result = final_state_dict.get("best_result") or {}
     best_eval = final_state_dict.get("best_evaluation") or {}
+    flags = _derive_solution_flags(final_state_dict)
 
     if not best_program:
         return
@@ -178,6 +194,7 @@ def _save_final_milp_artifacts(out_dir: Path, final_state_dict: dict[str, Any]) 
         out_dir / "final_summary.json",
         {
             "final_message": final_state_dict.get("final_message"),
+            **flags,
             "iterations_completed": final_state_dict.get("current_iteration"),
             "solver_status": best_result.get("solver_status"),
             "objective_value": best_result.get("objective_value"),

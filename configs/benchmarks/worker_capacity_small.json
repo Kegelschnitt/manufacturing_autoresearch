@@ -27,8 +27,8 @@
       "J4": 1
     },
     "workers_available_per_slot": {
-      "0": 1,
-      "1": 1
+      "0": 2,
+      "1": 2
     }
   },
   "evaluation_framework": {
