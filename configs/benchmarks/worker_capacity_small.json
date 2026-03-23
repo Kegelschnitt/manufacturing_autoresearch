@@ -1,0 +1,66 @@
+{
+  "name": "worker_capacity_small",
+  "description": "Assign jobs to machines and slots with minimum cost, while respecting machine capacity, eligibility, and limited worker availability per slot.",
+  "entities": {
+    "jobs": ["J1", "J2", "J3", "J4"],
+    "machines": ["M1", "M2"],
+    "slots": [0, 1],
+    "workers": ["W1", "W2"]
+  },
+  "parameters": {
+    "eligible": {
+      "J1": ["M1", "M2"],
+      "J2": ["M1"],
+      "J3": ["M2"],
+      "J4": ["M1", "M2"]
+    },
+    "cost": {
+      "J1|M1|0": 2, "J1|M1|1": 3, "J1|M2|0": 1, "J1|M2|1": 4,
+      "J2|M1|0": 1, "J2|M1|1": 2,
+      "J3|M2|0": 2, "J3|M2|1": 1,
+      "J4|M1|0": 3, "J4|M1|1": 1, "J4|M2|0": 4, "J4|M2|1": 2
+    },
+    "workers_required": {
+      "J1": 1,
+      "J2": 1,
+      "J3": 1,
+      "J4": 1
+    },
+    "workers_available_per_slot": {
+      "0": 1,
+      "1": 1
+    }
+  },
+  "evaluation_framework": {
+    "hard_rules": [
+      {
+        "id": "job_assigned_once",
+        "description": "Each job must appear exactly once in assignments."
+      },
+      {
+        "id": "machine_capacity",
+        "description": "A machine can handle at most one job in the same slot."
+      },
+      {
+        "id": "eligibility",
+        "description": "Each job may only be assigned to eligible machines."
+      },
+      {
+        "id": "worker_capacity",
+        "description": "The total workers required by jobs assigned in a slot must not exceed the workers available in that slot."
+      }
+    ],
+    "objective": {
+      "id": "min_total_cost",
+      "description": "Minimize total assignment cost."
+    },
+    "result_schema_hint": {
+      "solver_status": "string",
+      "objective_value": "number",
+      "assignments": [
+        { "job": "string", "machine": "string", "slot": "integer" }
+      ],
+      "notes": ["string"]
+    }
+  }
+}

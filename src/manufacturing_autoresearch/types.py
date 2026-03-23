@@ -59,6 +59,7 @@ class EvaluationReport(CoreModel):
     objective_terms: dict[str, float] = Field(default_factory=dict)
     rule_checks: list[RuleCheck] = Field(default_factory=list)
     violations: list[str] = Field(default_factory=list)
+    infeasibility_diagnosis: list[dict[str, Any]] = Field(default_factory=list)
     summary: str
 
 

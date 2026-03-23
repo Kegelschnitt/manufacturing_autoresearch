@@ -124,6 +124,10 @@ def _print_live_iteration_update(
     if violations:
         print(f"  top_violation={violations[0]}")
 
+    diagnosis = candidate_evaluation.infeasibility_diagnosis or []
+    if diagnosis:
+        print(f"  infeasibility_hint={diagnosis[0].get('message', '')}")
+
     selected_lessons = repair_signal.get("selected_modeling_lessons", []) or []
     if selected_lessons:
         lesson_ids = ", ".join(
@@ -167,6 +171,7 @@ def _build_repair_signal(
             "current_best_code_preview": _normalized(best_program.model_logic)[:4000],
             "candidate_changed_structure": _normalized(candidate_program.model_logic) != _normalized(best_program.model_logic),
             "selected_modeling_lessons": selected_modeling_lessons,
+            "infeasibility_diagnosis": list(candidate_evaluation.infeasibility_diagnosis or []),
             "problem_active_rule_ids": proposer_guidance.get("problem_active_rule_ids", []),
             "problem_active_objective_id": proposer_guidance.get("problem_active_objective_id", ""),
         }
@@ -282,6 +287,7 @@ def _build_repair_signal(
         "selected_modeling_lessons": selected_modeling_lessons,
         "problem_active_rule_ids": proposer_guidance.get("problem_active_rule_ids", []),
         "problem_active_objective_id": proposer_guidance.get("problem_active_objective_id", ""),
+        "infeasibility_diagnosis": list(candidate_evaluation.infeasibility_diagnosis or []),
         "active_rules_guidance": proposer_guidance.get("active_rules_guidance", []),
         "active_objective_guidance": proposer_guidance.get("active_objective_guidance", []),
         "latest_rule_results_from_guidance": proposer_guidance.get("latest_rule_results", []),
@@ -439,6 +445,7 @@ def build_graph(settings: Settings, run_dir: Path):
                         for item in repair_signal.get("missing_objective_terms", [])
                     ],
                     "top_violation": (candidate_evaluation.violations or [None])[0],
+                    "infeasibility_diagnosis": list(candidate_evaluation.infeasibility_diagnosis or []),
                 },
             )
 

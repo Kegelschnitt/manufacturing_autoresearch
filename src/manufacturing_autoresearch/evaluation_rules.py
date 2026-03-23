@@ -57,11 +57,7 @@ def machine_capacity(problem: ProblemDefinition, assignments: list[Assignment]) 
         key = (a.machine, int(a.slot))
         seen.setdefault(key, []).append(a.job)
 
-    overloads = {
-        key: jobs
-        for key, jobs in seen.items()
-        if len(jobs) > 1
-    }
+    overloads = {key: jobs for key, jobs in seen.items() if len(jobs) > 1}
 
     if overloads:
         return _make_rule_check(
@@ -107,6 +103,37 @@ def eligibility(problem: ProblemDefinition, assignments: list[Assignment]) -> Ru
     )
 
 
+def worker_capacity(problem: ProblemDefinition, assignments: list[Assignment]) -> RuleCheck:
+    workers_required = problem.parameters.get("workers_required", {}) or {}
+    workers_available_per_slot = problem.parameters.get("workers_available_per_slot", {}) or {}
+
+    used_by_slot: dict[int, float] = {}
+    for a in assignments:
+        slot = int(a.slot)
+        used_by_slot[slot] = used_by_slot.get(slot, 0.0) + float(workers_required.get(a.job, 0.0) or 0.0)
+
+    overloads: dict[int, dict[str, float]] = {}
+    slots_to_check = set(used_by_slot.keys()) | {int(s) for s in workers_available_per_slot.keys()}
+    for slot in sorted(slots_to_check):
+        available = float(workers_available_per_slot.get(str(slot), workers_available_per_slot.get(slot, 0.0)) or 0.0)
+        used = float(used_by_slot.get(slot, 0.0))
+        if used > available + 1e-9:
+            overloads[slot] = {"used": used, "available": available}
+
+    if overloads:
+        return _make_rule_check(
+            rule_id="worker_capacity",
+            passed=False,
+            details=f"worker-capacity overloads detected by slot: {overloads}",
+        )
+
+    return _make_rule_check(
+        rule_id="worker_capacity",
+        passed=True,
+        details="worker usage fits within available workers for every slot",
+    )
+
+
 def build_rule_registry() -> dict[str, RuleSpec]:
     return {
         "job_assigned_once": RuleSpec(
@@ -119,11 +146,7 @@ def build_rule_registry() -> dict[str, RuleSpec]:
                 "variables over eligible machines and all slots equals exactly 1."
             ),
             suggested_variables=[],
-            depends_on=[
-                "x[job, machine, slot]",
-                "eligible machine choices",
-                "all slots",
-            ],
+            depends_on=["x[job, machine, slot]", "eligible machine choices", "all slots"],
         ),
         "machine_capacity": RuleSpec(
             rule_id="machine_capacity",
@@ -135,10 +158,7 @@ def build_rule_registry() -> dict[str, RuleSpec]:
                 "of all assignment variables using that machine and slot is at most 1."
             ),
             suggested_variables=[],
-            depends_on=[
-                "x[job, machine, slot]",
-                "machine-slot pairs",
-            ],
+            depends_on=["x[job, machine, slot]", "machine-slot pairs"],
         ),
         "eligibility": RuleSpec(
             rule_id="eligibility",
@@ -151,19 +171,33 @@ def build_rule_registry() -> dict[str, RuleSpec]:
                 "throughout the MILP and never assume all (job, machine, slot) keys exist."
             ),
             suggested_variables=[],
+            depends_on=["eligible[job]", "x[job, machine, slot]", "sparse eligibility-safe indexing"],
+        ),
+        "worker_capacity": RuleSpec(
+            rule_id="worker_capacity",
+            description=(
+                "The total workers required by jobs assigned in a slot must not exceed "
+                "the workers available in that slot."
+            ),
+            evaluator=worker_capacity,
+            is_hard=True,
+            modeling_hint=(
+                "For each slot, add a worker-capacity constraint: the sum of "
+                "workers_required[job] * x[job, machine, slot] over all assigned job-machine "
+                "choices in that slot must be less than or equal to workers_available_per_slot[slot]."
+            ),
+            suggested_variables=[],
             depends_on=[
-                "eligible[job]",
                 "x[job, machine, slot]",
-                "sparse eligibility-safe indexing",
+                "workers_required[job]",
+                "workers_available_per_slot[slot]",
+                "slot-wise resource aggregation",
             ],
         ),
     }
 
 
-def evaluate_rule_checks(
-    problem: ProblemDefinition,
-    assignments: list[Assignment],
-) -> list[RuleCheck]:
+def evaluate_rule_checks(problem: ProblemDefinition, assignments: list[Assignment]) -> list[RuleCheck]:
     framework = problem.evaluation_framework or {}
     hard_rules = framework.get("hard_rules", []) or []
     registry = build_rule_registry()

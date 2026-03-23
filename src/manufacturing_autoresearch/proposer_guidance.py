@@ -9,6 +9,7 @@ from .objective_terms import build_objective_registry
 OBJECTIVE_TO_TERMS: dict[str, list[str]] = {
     "min_total_cost": ["assignment_cost"],
     "min_total_cost_with_changeover": ["assignment_cost", "changeover_penalty"],
+    "min_total_cost_with_tardiness": ["assignment_cost", "tardiness_penalty"],
 }
 
 
@@ -41,10 +42,7 @@ def _objective_definition_snapshot(term_id: str, spec: Any) -> dict[str, Any]:
     }
 
 
-def extract_proposer_guidance(
-    problem: dict[str, Any],
-    evaluation: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+def extract_proposer_guidance(problem: dict[str, Any], evaluation: dict[str, Any] | None = None) -> dict[str, Any]:
     framework = problem.get("evaluation_framework", {}) or {}
     hard_rules = framework.get("hard_rules", []) or []
     objective = framework.get("objective", {}) or {}

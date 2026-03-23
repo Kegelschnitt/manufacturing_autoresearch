@@ -47,6 +47,7 @@ def _build_short_terminal_summary(final_state_dict: dict[str, Any], out_dir: Pat
         "latest_failure_type": latest_signal.get("failure_type"),
         "latest_summary": latest_signal.get("summary"),
         "latest_top_violation": latest_violations[0] if latest_violations else None,
+        "latest_infeasibility_hint": ((latest_eval.get("infeasibility_diagnosis") or [None])[0] or {}).get("message"),
         "detailed_report_path": str(out_dir / "final_state_full.json"),
         "final_model_path": str(out_dir / "final_milp_model.py"),
         "final_explanation_path": str(out_dir / "final_milp_explanation.md"),
@@ -118,6 +119,17 @@ def _build_final_milp_explanation(final_state_dict: dict[str, Any]) -> str:
         lines.append("- No assignments recorded.")
     lines.append("")
 
+    diagnosis = best_eval.get("infeasibility_diagnosis") or []
+    if diagnosis:
+        lines.append("## Infeasibility Diagnosis")
+        lines.append("")
+        for item in diagnosis:
+            lines.append(f"- {item.get('message', '')}")
+            suggestion = item.get("suggested_fix", "")
+            if suggestion:
+                lines.append(f"  - Suggested fix: {suggestion}")
+        lines.append("")
+
     lines.append("## Final Notes")
     lines.append("")
     notes = best_result.get("notes") or []
@@ -176,6 +188,7 @@ def _save_final_milp_artifacts(out_dir: Path, final_state_dict: dict[str, Any]) 
             "notes": best_result.get("notes") or [],
             "summary": best_eval.get("summary"),
             "violations": best_eval.get("violations") or [],
+            "infeasibility_diagnosis": best_eval.get("infeasibility_diagnosis") or [],
         },
     )
 
