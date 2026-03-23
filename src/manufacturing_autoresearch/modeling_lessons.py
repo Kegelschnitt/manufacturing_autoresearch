@@ -40,7 +40,7 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
             lesson_id="set_objective_once",
             title="Build one combined objective expression and set it once",
             applies_when={
-                "failure_type": "runtime_error",
+                "failure_type": "objective_mismatch",
                 "warning_contains": ["Overwriting previously set objective"],
             },
             lesson="In PuLP, repeatedly using `prob += ...` for different objective pieces can overwrite the previous objective. Build one combined objective expression and set it once.",

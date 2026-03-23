@@ -24,6 +24,7 @@ def select_lessons(
     llm=None,
     problem=None,
     available_lessons=None,
+    current_best_code=None,
 ):
     if available_lessons is None:
         available_lessons = [
@@ -38,6 +39,7 @@ def select_lessons(
                 repair_signal=repair_signal,
                 proposer_guidance=proposer_guidance,
                 available_lessons=available_lessons,
+                current_best_code=proposer_guidance.get("current_best_code_preview", ""),
                 run_memory=run_memory or {},
             )
             if selected:

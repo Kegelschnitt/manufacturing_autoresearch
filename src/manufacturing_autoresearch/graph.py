@@ -384,12 +384,16 @@ def build_graph(settings: Settings, run_dir: Path):
                 lesson_to_prompt_dict(lesson)
                 for lesson in build_modeling_lessons().values()
             ]
+
+            proposer_guidance["current_best_code_preview"] = _normalized(state.best_program.model_logic)[:8000]
+
             selected_modeling_lessons = select_lessons(
                 llm=llm,
                 problem=problem,
                 repair_signal=state.repair_signal,
                 proposer_guidance=proposer_guidance,
                 available_lessons=available_lessons,
+                current_best_code=state.best_program.model_logic,
                 run_memory=run_memory,
             )
             proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons

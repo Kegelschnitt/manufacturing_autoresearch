@@ -37,6 +37,9 @@ Rules:
 - Prefer lessons that match the active objective, failure type, violations, warnings, and traceback.
 - Reject irrelevant lessons.
 - Prefer specific lessons over generic ones when possible.
+- Use current_best_code to detect concrete modeling mistakes when relevant.
+- If the code appears to overwrite the objective, prioritize lessons about setting the objective exactly once.
+- If the code appears to reference sparse variables unsafely, prioritize sparse-indexing lessons.
 """
 
 
@@ -272,6 +275,7 @@ class LLMClient:
         repair_signal,
         proposer_guidance,
         available_lessons,
+        current_best_code=None,
         run_memory=None,
     ):
         if not self.client:
@@ -283,6 +287,7 @@ class LLMClient:
             "repair_signal": repair_signal,
             "proposer_guidance": proposer_guidance,
             "available_lessons": available_lessons,
+            "current_best_code": current_best_code or "",
             "run_memory": run_memory or {},
         }
 
