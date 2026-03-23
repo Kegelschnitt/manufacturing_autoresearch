@@ -6,7 +6,7 @@ from pathlib import Path
 from .baseline import baseline_program
 from .evaluator import evaluate_result
 from .execution import execute_program
-from .modeling_lessons import build_modeling_lessons
+from .modeling_lessons import build_modeling_lessons, lesson_to_prompt_dict
 from .llm import LLMClient
 from .logging_utils import dump_json, ensure_dir
 from .preflight import run_preflight
@@ -130,13 +130,24 @@ def _print_live_iteration_update(
 
     selected_lessons = repair_signal.get("selected_modeling_lessons", []) or []
     if selected_lessons:
-        lesson_ids = ", ".join(
-            item.get("lesson_id", "")
-            for item in selected_lessons[:3]
-            if item.get("lesson_id")
-        )
-        if lesson_ids:
-            print(f"  lessons={lesson_ids}")
+        lesson_bits = []
+        for item in selected_lessons[:3]:
+            lid = item.get("lesson_id", "")
+            reason = (
+                item.get("selection_reason")
+                or item.get("llm_reason")
+                or ""
+            )
+
+            if lid and reason:
+                # optional: truncate long reasons
+                reason = reason[:80] + "..." if len(reason) > 80 else reason
+                lesson_bits.append(f"{lid} ({reason})")
+            elif lid:
+                lesson_bits.append(lid)
+
+        if lesson_bits:
+            print(f"  lessons={'; '.join(lesson_bits)}")
 
 
 def _build_repair_signal(
@@ -368,14 +379,11 @@ def build_graph(settings: Settings, run_dir: Path):
                 evaluation=state.best_evaluation.model_dump() if state.best_evaluation else None,
             )
             run_memory = _build_run_memory(state)
-            selected_modeling_lessons = select_lessons(
-                repair_signal=state.repair_signal,
-                proposer_guidance=proposer_guidance,
-                run_memory=run_memory,
-            )
-            proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
 
-            available_lessons = build_modeling_lessons()
+            available_lessons = [
+                lesson_to_prompt_dict(lesson)
+                for lesson in build_modeling_lessons().values()
+            ]
             selected_modeling_lessons = select_lessons(
                 llm=llm,
                 problem=problem,
@@ -384,6 +392,8 @@ def build_graph(settings: Settings, run_dir: Path):
                 available_lessons=available_lessons,
                 run_memory=run_memory,
             )
+            proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
+                        
             candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
                 current_best=state.best_program,
@@ -484,6 +494,17 @@ def build_graph(settings: Settings, run_dir: Path):
                     "failure_type": repair_signal.get("failure_type"),
                     "selected_modeling_lesson_ids": [
                         item.get("lesson_id")
+                        for item in selected_modeling_lessons
+                        if item.get("lesson_id")
+                    ],
+                    "selected_modeling_lesson_reasons": [
+                        {
+                            "lesson_id": item.get("lesson_id"),
+                            "reason": item.get("selection_reason") or item.get("llm_reason", ""),
+                            "priority_hint": item.get("priority_hint"),
+                            "llm_reason": item.get("llm_reason", ""),
+                            "llm_priority": item.get("llm_priority"),
+                        }
                         for item in selected_modeling_lessons
                         if item.get("lesson_id")
                     ],

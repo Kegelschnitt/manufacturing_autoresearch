@@ -274,6 +274,7 @@ class LLMClient:
         run_memory=None,
     ):
         if not self.client:
+            print("[debug] LLM lesson selector: no client available")
             return []
 
         user_prompt = {
@@ -293,11 +294,17 @@ class LLMClient:
                 ],
             )
             text = (response.output_text or "").strip()
+            print("[debug] lesson selector raw output:", text)
+
             parsed = json.loads(text)
             selected = parsed.get("selected_lessons", [])
-            selected_ids = [item["lesson_id"] for item in selected if "lesson_id" in item]
 
-            lesson_map = {lesson["lesson_id"]: lesson for lesson in available_lessons}
+            lesson_map = {
+                lesson.get("lesson_id"): lesson
+                for lesson in available_lessons
+                if isinstance(lesson, dict) and lesson.get("lesson_id")
+            }
+
             resolved = []
             for item in selected:
                 lid = item.get("lesson_id")
@@ -306,6 +313,10 @@ class LLMClient:
                     lesson["llm_priority"] = item.get("priority")
                     lesson["llm_reason"] = item.get("reason", "")
                     resolved.append(lesson)
+
+            print("[debug] LLM lesson selector resolved ids:", [x.get("lesson_id") for x in resolved])
+            print("[debug] LLM lesson selector resolved reasons:", [x.get("llm_reason") for x in resolved])
             return resolved
-        except Exception:
+        except Exception as exc:
+            print(f"[debug] LLM lesson selector failed: {type(exc).__name__}: {exc}")
             return []
