@@ -5,6 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from rich import text
 
 from .types import ProblemDefinition, ProgramProposal
 
@@ -293,9 +294,19 @@ class LLMClient:
                     {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
                 ],
             )
-            text = (response.output_text or "").strip()
-            print("[debug] lesson selector raw output:", text)
 
+            # --- CLEAN MARKDOWN FENCES ---
+            def _clean_json(text: str) -> str:
+                text = text.strip()
+                if text.startswith("```"):
+                    parts = text.split("```")
+                    if len(parts) >= 2:
+                        text = parts[1]
+                    if text.startswith("json"):
+                        text = text[len("json"):].strip()
+                return text
+            
+            text = _clean_json(response.output_text or "")
             parsed = json.loads(text)
             selected = parsed.get("selected_lessons", [])
 
@@ -314,8 +325,8 @@ class LLMClient:
                     lesson["llm_reason"] = item.get("reason", "")
                     resolved.append(lesson)
 
-            print("[debug] LLM lesson selector resolved ids:", [x.get("lesson_id") for x in resolved])
-            print("[debug] LLM lesson selector resolved reasons:", [x.get("llm_reason") for x in resolved])
+            # print("[debug] LLM lesson selector resolved ids:", [x.get("lesson_id") for x in resolved])
+            # print("[debug] LLM lesson selector resolved reasons:", [x.get("llm_reason") for x in resolved])
             return resolved
         except Exception as exc:
             print(f"[debug] LLM lesson selector failed: {type(exc).__name__}: {exc}")
