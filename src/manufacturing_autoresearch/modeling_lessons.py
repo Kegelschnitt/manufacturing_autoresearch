@@ -12,6 +12,9 @@ class ModelingLesson:
     lesson: str = ""
     recommended_actions: list[str] = field(default_factory=list)
     anti_patterns: list[str] = field(default_factory=list)
+    priority_hint: int = 5
+    tags: list[str] = field(default_factory=list)
+
 
 
 def build_modeling_lessons() -> dict[str, ModelingLesson]:
@@ -30,6 +33,28 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Changing only notes or explanation text",
                 "Patching values in extract_assignments",
             ],
+            priority_hint=9,
+            tags=["objective", "repair", "generic"],
+        ),
+        ModelingLesson(
+            lesson_id="set_objective_once",
+            title="Build one combined objective expression and set it once",
+            applies_when={
+                "failure_type": "runtime_error",
+                "warning_contains": ["Overwriting previously set objective"],
+            },
+            lesson="In PuLP, repeatedly using `prob += ...` for different objective pieces can overwrite the previous objective. Build one combined objective expression and set it once.",
+            recommended_actions=[
+                "Create one combined objective expression that includes all active terms.",
+                "Call `prob += total_objective, \"objective_name\"` exactly once.",
+                "Extend the existing objective expression instead of setting a new objective later in the code.",
+            ],
+            anti_patterns=[
+                "Setting assignment cost as one objective and tardiness/changeover as a second objective",
+                "Overwriting the previous objective with another `prob += ...` objective statement",
+            ],
+            priority_hint=10,
+            tags=["objective", "runtime", "pulp"],
         ),
         ModelingLesson(
             lesson_id="no_structural_change_make_real_edit",
@@ -45,6 +70,8 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Only renaming variables",
                 "Only adding comments",
             ],
+            priority_hint=8,
+            tags=["structure", "generic"],
         ),
         ModelingLesson(
             lesson_id="runtime_error_sparse_indexing",
@@ -60,6 +87,8 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Dense indexing over all jobs, machines, and slots without checking membership",
                 "Referencing x[(job, machine, slot)] for ineligible pairs",
             ],
+            priority_hint=10,
+            tags=["runtime", "sparse-indexing", "generic"],
         ),
         ModelingLesson(
             lesson_id="preserve_working_hard_constraints",
@@ -70,14 +99,17 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Keep existing job-once and capacity logic if those checks already pass.",
                 "Target only the weakest part of the MILP first.",
             ],
-            anti_patterns=[
-                "Rewriting all feasibility constraints unnecessarily",
-            ],
+            anti_patterns=["Rewriting all feasibility constraints unnecessarily"],
+            priority_hint=7,
+            tags=["generic", "constraints"],
         ),
         ModelingLesson(
             lesson_id="changeover_requires_auxiliary_variables",
             title="Model changeovers with explicit transition logic",
-            applies_when={"missing_objective_terms": ["changeover_penalty"]},
+            applies_when={
+                "missing_objective_terms": ["changeover_penalty"],
+                "objective_ids": ["min_total_cost_with_changeover"],
+            },
             lesson="Changeover penalties usually require explicit transition variables and linking constraints rather than a formatting fix.",
             recommended_actions=[
                 "Introduce transition or setup indicator variables.",
@@ -88,19 +120,57 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Assuming the evaluator will infer changeovers from notes",
                 "Adding a scalar constant to the objective without linking variables",
             ],
+            priority_hint=9,
+            tags=["objective", "changeover"],
+        ),
+        ModelingLesson(
+            lesson_id="tardiness_requires_slot_based_penalty",
+            title="Model tardiness from assignment slot versus due slot",
+            applies_when={
+                "missing_objective_terms": ["tardiness_penalty"],
+                "objective_ids": ["min_total_cost_with_tardiness"],
+            },
+            lesson="Tardiness penalties are driven by whether a job is assigned after its due slot. In a time-indexed assignment MILP, tardiness must be linked to the assigned slot and due_slot[job].",
+            recommended_actions=[
+                "Use the assigned slot to determine whether each job is late relative to its due slot.",
+                "Introduce auxiliary lateness or tardiness variables if needed for a clean linear formulation.",
+                "Add the tardiness contribution directly to the MILP objective.",
+            ],
+            anti_patterns=[
+                "Ignoring due-slot information in the objective",
+                "Adding a tardiness constant not linked to assignment decisions",
+            ],
+            priority_hint=10,
+            tags=["objective", "tardiness"],
+        ),
+        ModelingLesson(
+            lesson_id="worker_capacity_requires_slot_aggregation",
+            title="Aggregate worker usage by slot",
+            applies_when={"violated_rules": ["worker_capacity"]},
+            lesson="Worker capacity is a slot-level resource constraint. Total workers required by jobs assigned in a slot must not exceed workers available in that slot.",
+            recommended_actions=[
+                "For each slot, sum workers_required[job] across assigned jobs in that slot.",
+                "Constrain that sum by workers_available_per_slot[slot].",
+            ],
+            anti_patterns=[
+                "Confusing machine capacity with worker capacity",
+                "Applying worker limits per machine instead of per slot when the rule is slot-wide",
+            ],
+            priority_hint=9,
+            tags=["constraint", "workers"],
         ),
         ModelingLesson(
             lesson_id="dont_repair_in_extract_assignments",
             title="Do not repair in extract_assignments",
             applies_when={"always": True},
             lesson="extract_assignments should read the solved model result, not enforce feasibility or patch objective logic.",
-            recommended_actions=[
-                "Encode all required constraints and objective terms in build_model.",
-            ],
+            recommended_actions=["Encode all required constraints and objective terms in build_model."],
             anti_patterns=[
                 "Filtering invalid assignments after solving",
                 "Injecting missing costs in extract_assignments",
             ],
+            priority_hint=7,
+            tags=["generic", "extraction"],
         ),
         ModelingLesson(
             lesson_id="runtime_first_fix_execution",
@@ -111,12 +181,13 @@ def build_modeling_lessons() -> dict[str, ModelingLesson]:
                 "Resolve syntax and indexing issues first.",
                 "Preserve the previous working logic while fixing execution.",
             ],
-            anti_patterns=[
-                "Adding more complexity before fixing the crash",
-            ],
+            anti_patterns=["Adding more complexity before fixing the crash"],
+            priority_hint=8,
+            tags=["runtime", "generic"],
         ),
     ]
     return {lesson.lesson_id: lesson for lesson in lessons}
+
 
 
 def lesson_to_prompt_dict(lesson: ModelingLesson) -> dict[str, Any]:
@@ -127,4 +198,6 @@ def lesson_to_prompt_dict(lesson: ModelingLesson) -> dict[str, Any]:
         "lesson": lesson.lesson,
         "recommended_actions": list(lesson.recommended_actions),
         "anti_patterns": list(lesson.anti_patterns),
+        "priority_hint": lesson.priority_hint,
+        "tags": list(lesson.tags),
     }

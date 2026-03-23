@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from manufacturing_autoresearch.modeling_lessons import build_modeling_lessons
+
 from .baseline import baseline_program
 from .evaluator import evaluate_result
 from .execution import execute_program
@@ -13,7 +15,7 @@ from .preflight import run_preflight
 from .proposer_guidance import extract_proposer_guidance
 from .selector import should_accept_candidate
 from .types import IterationRecord, ProblemDefinition, RunState, Settings, SolverResult
-
+from .lesson_selector import select_lessons
 
 def _normalized(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
@@ -375,6 +377,15 @@ def build_graph(settings: Settings, run_dir: Path):
             )
             proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
 
+            available_lessons = build_modeling_lessons()
+            selected_modeling_lessons = select_lessons(
+                llm=llm,
+                problem=problem,
+                repair_signal=state.repair_signal,
+                proposer_guidance=proposer_guidance,
+                available_lessons=available_lessons,
+                run_memory=run_memory,
+            )
             candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
                 current_best=state.best_program,
