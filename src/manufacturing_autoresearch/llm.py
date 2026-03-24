@@ -53,6 +53,11 @@ Rules:
 - Use structured applies_when fields such as failure_type, missing_objective_terms, violated_rules, traceback_contains, or objective_ids.
 - Prefer narrow reusable lessons over generic advice.
 - If no reusable lesson was learned, return {"new_lessons": []}.
+- Do not restate an existing lesson with only minor wording changes.
+- If an existing lesson already captures the same modeling pattern, return no new lesson for that pattern.
+- Prefer returning {"new_lessons": []} over proposing a near-duplicate lesson.
+- Only propose a new lesson when the pattern is clearly distinct from existing lessons.
+- Avoid generic “best practice” lessons unless the repair revealed a specific reusable MILP modeling pattern.
 """
 
 LESSON_SELECTOR_SYSTEM_PROMPT = """You are selecting modeling lessons for a MILP repair loop.
@@ -529,6 +534,7 @@ class LLMClient:
                     {
                         "lesson_id": lesson.get("lesson_id"),
                         "title": lesson.get("title") or lesson.get("lesson"),
+                        "lesson": lesson.get("lesson"),
                         "tags": lesson.get("tags", []),
                         "applies_when": lesson.get("applies_when", {}),
                     }

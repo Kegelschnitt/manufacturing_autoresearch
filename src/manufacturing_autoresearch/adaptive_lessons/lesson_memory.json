@@ -1,6 +1,6 @@
 {
   "lessons": [
-{
+    {
       "lesson_id": "changeover_modeling_with_aux_vars",
       "title": "Model changeovers explicitly with auxiliary variables",
       "applies_when": {
@@ -43,6 +43,40 @@
       "updated_at": "2026-03-24T06:15:18.726258+00:00"
     },
     {
+      "lesson_id": "integrate_all_costs_in_objective",
+      "title": "Integrate all cost components in the objective function",
+      "applies_when": {
+        "missing_objective_terms": [
+          "assignment_cost",
+          "changeover_penalty"
+        ],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "Ensure that all relevant cost components, including assignment costs and changeover penalties, are included in the objective function to achieve optimal solutions.",
+      "recommended_actions": [
+        "Structure the objective to combine assignment and changeover costs seamlessly.",
+        "Add all active cost terms into a single objective expression during model formulation."
+      ],
+      "anti_patterns": [
+        "Setting components of the objective in isolation rather than as part of a comprehensive objective expression."
+      ],
+      "priority_hint": 7,
+      "tags": [
+        "objective",
+        "cost",
+        "optimization",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T07:51:41.142675+00:00",
+      "updated_at": "2026-03-24T07:51:41.142675+00:00"
+    },
+    {
       "lesson_id": "objective_extension_best_practice",
       "title": "Extend the objective rather than overwrite",
       "applies_when": {
@@ -80,6 +114,41 @@
       "version": 1,
       "created_at": "2026-03-24T06:15:18.728833+00:00",
       "updated_at": "2026-03-24T06:15:18.728833+00:00"
+    },
+    {
+      "lesson_id": "transition_variables_essential_for_changeover",
+      "title": "Use transition variables for modeling changeovers",
+      "applies_when": {
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "To account for changeover penalties in multi-slot scheduling, explicitly model transition variables that indicate job changes on the same machine between consecutive slots.",
+      "recommended_actions": [
+        "Introduce auxiliary binary variables for changeovers.",
+        "Establish linking constraints between job assignments and transition variables.",
+        "Ensure the changeover penalties are included directly in the MILP objective."
+      ],
+      "anti_patterns": [
+        "Neglecting to link transition indicators to the corresponding job assignments.",
+        "Assuming that changeovers can be inferred without explicit modeling."
+      ],
+      "priority_hint": 8,
+      "tags": [
+        "objective",
+        "changeover",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T07:51:41.140465+00:00",
+      "updated_at": "2026-03-24T07:51:41.140465+00:00"
     }
   ]
 }

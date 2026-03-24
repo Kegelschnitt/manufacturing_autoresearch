@@ -72,9 +72,12 @@ class LessonCurator:
         proposed_lessons: list[dict[str, Any]] | None,
         problem_name: str,
         existing_core_lessons: list[dict[str, Any]] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
         """
-        Validate and normalize candidate lessons. Only returns safe new lessons.
+        Validate, classify, and normalize candidate lessons.
+
+        Returns:
+            accepted_new_lessons, merge_updates, rejected_candidates
         """
         proposed_lessons = proposed_lessons or []
         existing_core_lessons = existing_core_lessons or []
@@ -86,28 +89,74 @@ class LessonCurator:
         }
 
         accepted: list[dict[str, Any]] = []
+        merge_updates: list[dict[str, Any]] = []
+        rejected_candidates: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
 
         for candidate in proposed_lessons:
             normalized = self._normalize_candidate(candidate)
             lesson_id = normalized.get("lesson_id")
 
-            if not lesson_id or lesson_id in seen_ids:
+            if not lesson_id:
+                rejected_candidates.append(
+                    {
+                        "lesson_id": None,
+                        "action": "reject",
+                        "reason": "missing lesson_id after normalization",
+                    }
+                )
                 continue
 
-            result = self.validate_candidate(
+            if lesson_id in seen_ids:
+                rejected_candidates.append(
+                    {
+                        "lesson_id": lesson_id,
+                        "action": "duplicate_skip",
+                        "reason": "duplicate lesson_id within same proposal batch",
+                    }
+                )
+                continue
+
+            action, existing, reason = self.classify_candidate(
                 candidate=normalized,
                 problem_name=problem_name,
                 core_ids=core_ids,
             )
 
-            if result.ok:
+            if action == "accept":
                 accepted.append(normalized)
                 seen_ids.add(lesson_id)
-            else:
-               print(f"[debug] rejected adaptive lesson {lesson_id!r}: {result.reason}")
+                continue
 
-        return accepted
+            if action == "merge_update" and existing is not None:
+                target_lesson_id = existing.get("lesson_id")
+                if target_lesson_id:
+                    merge_updates.append(
+                        {
+                            "target_lesson_id": target_lesson_id,
+                            "candidate": normalized,
+                            "reason": reason,
+                        }
+                    )
+                else:
+                    rejected_candidates.append(
+                        {
+                            "lesson_id": lesson_id,
+                            "action": "reject",
+                            "reason": "merge target missing lesson_id",
+                        }
+                    )
+                continue
+
+            rejected_candidates.append(
+                {
+                    "lesson_id": lesson_id,
+                    "action": action,
+                    "reason": reason,
+                }
+            )
+
+        return accepted, merge_updates, rejected_candidates
 
     def validate_candidate(
         self,
@@ -145,9 +194,6 @@ class LessonCurator:
         if lesson_id in core_ids:
             return ValidationResult(False, "lesson_id already exists in core lessons")
 
-        if hasattr(self.memory, "has_lesson") and self.memory.has_lesson(lesson_id):
-            return ValidationResult(False, "lesson_id already exists in adaptive memory")
-
         if self._looks_too_generic(title, lesson_text):
             return ValidationResult(False, "lesson is too generic")
 
@@ -158,6 +204,39 @@ class LessonCurator:
             return ValidationResult(False, "adaptive lessons should not use always=true in Phase 3")
 
         return ValidationResult(True, None)
+    
+    def classify_candidate(
+        self,
+        candidate: dict[str, Any],
+        problem_name: str,
+        core_ids: set[str] | None = None,
+    ) -> tuple[str, dict[str, Any] | None, str | None]:
+        core_ids = core_ids or set()
+
+        validation = self.validate_candidate(
+            candidate=candidate,
+            problem_name=problem_name,
+            core_ids=core_ids,
+        )
+        if not validation.ok:
+            return "reject", None, validation.reason
+
+        lesson_id = candidate.get("lesson_id")
+        if lesson_id in core_ids:
+            return "reject", None, "lesson_id already exists in core lessons"
+
+        existing = None
+        if hasattr(self.memory, "find_duplicate_or_similar"):
+            existing = self.memory.find_duplicate_or_similar(candidate)
+
+        if existing is None:
+            return "accept", None, None
+
+        existing_id = existing.get("lesson_id")
+        if existing_id == lesson_id:
+            return "duplicate_skip", existing, "lesson_id already exists in adaptive memory"
+
+        return "merge_update", existing, "similar adaptive lesson already exists"
 
     def _normalize_candidate(self, candidate: dict[str, Any]) -> dict[str, Any]:
         lesson_id = str(candidate.get("lesson_id", "")).strip()
@@ -169,11 +248,15 @@ class LessonCurator:
             applies_when = {}
 
         recommended_actions = candidate.get("recommended_actions")
-        if not isinstance(recommended_actions, list):
+        if isinstance(recommended_actions, str):
+            recommended_actions = [recommended_actions]
+        elif not isinstance(recommended_actions, list):
             recommended_actions = []
 
         anti_patterns = candidate.get("anti_patterns")
-        if not isinstance(anti_patterns, list):
+        if isinstance(anti_patterns, str):
+            anti_patterns = [anti_patterns]
+        elif not isinstance(anti_patterns, list):
             anti_patterns = []
 
         tags = candidate.get("tags")

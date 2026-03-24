@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from manufacturing_autoresearch import lesson_memory
 from manufacturing_autoresearch.lesson_memory import LessonMemory
 
 from .baseline import baseline_program
@@ -402,7 +401,7 @@ def build_graph(settings: Settings, run_dir: Path):
             selected_modeling_lessons = select_lessons(
                 llm=llm,
                 problem=problem,
-                repair_signal=state.repair_signal,
+                repair_signal=state.repair_signal or {},
                 proposer_guidance=proposer_guidance,
                 available_lessons=available_lessons,
                 current_best_code=state.best_program.model_logic,
@@ -423,7 +422,7 @@ def build_graph(settings: Settings, run_dir: Path):
             candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
                 current_best=state.best_program,
-                repair_signal=state.repair_signal,
+                repair_signal=state.repair_signal or {},
                 proposer_guidance=proposer_guidance,
                 run_memory=run_memory,
                 selected_modeling_lessons=selected_modeling_lessons,
@@ -434,7 +433,7 @@ def build_graph(settings: Settings, run_dir: Path):
 
             same_as_best = _normalized(candidate_program.model_logic) == _normalized(state.best_program.model_logic)
 
-            if same_as_best and state.repair_signal.get("failure_type") in {"objective_mismatch", "no_structural_change"}:
+            if same_as_best and (state.repair_signal or {}).get("failure_type") in {"objective_mismatch", "no_structural_change"}:
                 candidate_result = SolverResult(
                     solver_status="rejected_without_execution",
                     objective_value=None,
@@ -492,6 +491,26 @@ def build_graph(settings: Settings, run_dir: Path):
             if accepted:
                 existing_lessons = core_lessons + lesson_memory.as_prompt_lessons()
 
+                lesson_curation_report = {
+                    "iteration": i,
+                    "problem_name": problem.name,
+                    "accepted_candidate": bool(accepted),
+                    "selected_modeling_lesson_ids": [
+                        item.get("lesson_id")
+                        for item in selected_modeling_lessons
+                        if isinstance(item, dict) and item.get("lesson_id")
+                    ],
+                    "repair_signal_before_failure_type": repair_signal_before.get("failure_type"),
+                    "before_objective": (
+                        before_evaluation.computed_objective_value if before_evaluation else None
+                    ),
+                    "after_objective": candidate_evaluation.computed_objective_value,
+                    "proposed_lessons": [],
+                    "accepted_new_lessons": [],
+                    "merge_updates": [],
+                    "rejected_candidates": [],
+                }
+
                 proposed_lessons = lesson_curator.propose_lessons(
                     llm=llm,
                     problem=problem,
@@ -510,19 +529,55 @@ def build_graph(settings: Settings, run_dir: Path):
                     existing_lessons=existing_lessons,
                 )
 
-                filtered_lessons = lesson_curator.filter_new_lessons(
+                lesson_curation_report["proposed_lessons"] = [
+                    {
+                        "lesson_id": lesson.get("lesson_id"),
+                        "title": lesson.get("title"),
+                        "applies_when": lesson.get("applies_when"),
+                        "tags": lesson.get("tags", []),
+                    }
+                    for lesson in proposed_lessons
+                    if isinstance(lesson, dict)
+                ]
+
+                accepted_lessons, merge_updates, rejected_candidates = lesson_curator.filter_new_lessons(
                     proposed_lessons=proposed_lessons,
                     problem_name=problem.name,
                     existing_core_lessons=core_lessons,
                 )
 
-                for lesson in filtered_lessons:
+                lesson_curation_report["accepted_new_lessons"] = [
+                    {
+                        "lesson_id": lesson.get("lesson_id"),
+                        "title": lesson.get("title"),
+                    }
+                    for lesson in accepted_lessons
+                ]
+
+                lesson_curation_report["merge_updates"] = merge_updates
+                lesson_curation_report["rejected_candidates"] = rejected_candidates
+
+                for lesson in accepted_lessons:
                     lesson_id = lesson.get("lesson_id")
                     if lesson_id:
                         lesson_memory.add_lesson(lesson_id, lesson)
 
-                if filtered_lessons:
-                    print("[adaptive] added lessons:", [x["lesson_id"] for x in filtered_lessons])
+                for item in merge_updates:
+                    target_lesson_id = item.get("target_lesson_id")
+                    candidate = item.get("candidate")
+                    if target_lesson_id and isinstance(candidate, dict):
+                        lesson_memory.merge_into_existing(target_lesson_id, candidate)
+
+                dump_json(
+                    run_dir / f"iteration_{i:03d}_lesson_curation_report.json",
+                    lesson_curation_report,
+                )
+
+                if accepted_lessons:
+                    print("[adaptive] added lessons:", [x["lesson_id"] for x in accepted_lessons])
+
+                if merge_updates:
+                    print("[adaptive] merged lessons:", [x["target_lesson_id"] for x in merge_updates])
 
             state.latest_program = candidate_program
             state.latest_preflight = candidate_preflight
