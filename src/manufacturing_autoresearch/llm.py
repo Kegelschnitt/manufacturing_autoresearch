@@ -40,6 +40,13 @@ Rules:
 - Use current_best_code to detect concrete modeling mistakes when relevant.
 - If the code appears to overwrite the objective, prioritize lessons about setting the objective exactly once.
 - If the code appears to reference sparse variables unsafely, prioritize sparse-indexing lessons.
+- Each lesson may include historical_success_rate, historical_score, historical_times_selected, and historical_times_failed.
+- Use historical_score and historical_success_rate only as secondary signals.
+- Do not prefer a historically strong but irrelevant lesson over a clearly relevant lesson.
+- If two lessons are similarly relevant, prefer the one with stronger historical evidence.
+- Do not unfairly reject unseen lessons with little or no history if they are strongly relevant.
+- Prefer the smallest lesson set that plausibly addresses the current failure; do not include extra lessons unless they have clear evidence from the repair signal or code.
+- Avoid repeatedly selecting the same bundle of lessons unless each lesson is independently justified by the current repair signal.
 """
 
 
@@ -113,6 +120,37 @@ class LLMClient:
 
     def _fallback(self, current_best: ProgramProposal) -> ProgramProposal:
         return current_best
+    
+    def _attach_lesson_history(self, available_lessons, lesson_stats=None):
+        enriched = []
+
+        for lesson in available_lessons or []:
+            if not isinstance(lesson, dict):
+                continue
+
+            item = dict(lesson)
+            lesson_id = item.get("lesson_id")
+
+            if lesson_stats is not None and lesson_id:
+                stats = lesson_stats.get_lesson_stats(lesson_id)
+            else:
+                stats = {
+                    "times_selected": 0,
+                    "times_successful": 0,
+                    "times_failed": 0,
+                    "success_rate": 0.0,
+                    "score": 0.0,
+                }
+
+            item["historical_times_selected"] = int(stats.get("times_selected", 0) or 0)
+            item["historical_times_successful"] = int(stats.get("times_successful", 0) or 0)
+            item["historical_times_failed"] = int(stats.get("times_failed", 0) or 0)
+            item["historical_success_rate"] = float(stats.get("success_rate", 0.0) or 0.0)
+            item["historical_score"] = float(stats.get("score", 0.0) or 0.0)
+
+            enriched.append(item)
+
+        return enriched
 
     def reason_about_fix(
         self,
@@ -277,18 +315,38 @@ class LLMClient:
         available_lessons,
         current_best_code=None,
         run_memory=None,
+        lesson_stats=None,
     ):
         if not self.client:
             print("[debug] LLM lesson selector: no client available")
             return []
 
+        enriched_lessons = self._attach_lesson_history(
+            available_lessons=available_lessons,
+            lesson_stats=lesson_stats,
+        )
+
+        print("[debug] lesson selector lesson history:")
+        for lesson in enriched_lessons:
+            print(
+                lesson.get("lesson_id"),
+                lesson.get("historical_score"),
+                lesson.get("historical_success_rate"),
+                lesson.get("historical_times_selected"),
+            )
+
         user_prompt = {
             "problem_definition": problem.model_dump(),
             "repair_signal": repair_signal,
             "proposer_guidance": proposer_guidance,
-            "available_lessons": available_lessons,
+            "available_lessons": enriched_lessons,
             "current_best_code": current_best_code or "",
             "run_memory": run_memory or {},
+            "selection_guidance": {
+                "prefer_relevance_first": True,
+                "use_history_as_secondary_signal": True,
+                "allow_exploration_for_unseen_but_relevant_lessons": True,
+            },
         }
 
         try:

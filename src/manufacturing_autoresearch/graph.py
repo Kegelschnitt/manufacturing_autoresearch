@@ -403,6 +403,7 @@ def build_graph(settings: Settings, run_dir: Path):
                 available_lessons=available_lessons,
                 current_best_code=state.best_program.model_logic,
                 run_memory=run_memory,
+                lesson_stats=lesson_stats,
             )
             proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
 
