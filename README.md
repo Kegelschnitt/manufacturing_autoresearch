@@ -269,8 +269,8 @@ cp .env.example .env
 
 export PYTHONPATH=src
 python -m manufacturing_autoresearch.main \
-  --problem configs/benchmarks/worker_capacity_small.json \
-  --out runs/worker_test \
+  --problem configs/benchmarks/changeover_small.json \
+  --out runs/changeover_test \
   --max-iters 3
 ```
 

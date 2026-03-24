@@ -1,0 +1,38 @@
+{
+  "set_objective_once": {
+    "times_selected": 6,
+    "times_successful": 2,
+    "times_failed": 4,
+    "last_used": "2026-03-24T04:24:10.544151+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.3333333333333333,
+    "score": 0.648636716351771
+  },
+  "changeover_requires_auxiliary_variables": {
+    "times_selected": 6,
+    "times_successful": 2,
+    "times_failed": 4,
+    "last_used": "2026-03-24T04:24:10.542858+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.3333333333333333,
+    "score": 0.648636716351771
+  },
+  "runtime_error_sparse_indexing": {
+    "times_selected": 6,
+    "times_successful": 2,
+    "times_failed": 4,
+    "last_used": "2026-03-24T04:24:10.544289+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.3333333333333333,
+    "score": 0.648636716351771
+  },
+  "preserve_working_hard_constraints": {
+    "times_selected": 4,
+    "times_successful": 1,
+    "times_failed": 3,
+    "last_used": "2026-03-24T04:24:10.544382+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.25,
+    "score": 0.40235947810852507
+  }
+}

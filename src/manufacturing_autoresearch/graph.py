@@ -14,6 +14,8 @@ from .proposer_guidance import extract_proposer_guidance
 from .selector import should_accept_candidate
 from .types import IterationRecord, ProblemDefinition, RunState, Settings, SolverResult
 from .lesson_selector import select_lessons
+from .lesson_memory import LessonMemory
+from .lesson_stats import LessonStats
 
 def _normalized(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
@@ -309,6 +311,8 @@ def _build_repair_signal(
 def build_graph(settings: Settings, run_dir: Path):
     ensure_dir(run_dir)
     llm = LLMClient()
+    lesson_memory = LessonMemory()
+    lesson_stats = LessonStats()
 
     def run(problem: ProblemDefinition) -> RunState:
         _print_start(problem, settings)
@@ -380,10 +384,14 @@ def build_graph(settings: Settings, run_dir: Path):
             )
             run_memory = _build_run_memory(state)
 
-            available_lessons = [
+            core_lessons = [
                 lesson_to_prompt_dict(lesson)
                 for lesson in build_modeling_lessons().values()
             ]
+
+            adaptive_lessons = lesson_memory.as_prompt_lessons()
+
+            available_lessons = core_lessons + adaptive_lessons
 
             proposer_guidance["current_best_code_preview"] = _normalized(state.best_program.model_logic)[:8000]
 
@@ -397,6 +405,11 @@ def build_graph(settings: Settings, run_dir: Path):
                 run_memory=run_memory,
             )
             proposer_guidance["selected_modeling_lessons"] = selected_modeling_lessons
+
+            for item in selected_modeling_lessons:
+                lesson_id = item.get("lesson_id") if isinstance(item, dict) else None
+                if lesson_id:
+                    lesson_stats.record_usage(lesson_id)
                         
             candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
@@ -461,6 +474,12 @@ def build_graph(settings: Settings, run_dir: Path):
                 selected_modeling_lessons=selected_modeling_lessons,
             )
 
+            iteration_success = bool(accepted)
+            for item in selected_modeling_lessons:
+                lesson_id = item.get("lesson_id") if isinstance(item, dict) else None
+                if lesson_id:
+                    lesson_stats.record_outcome(lesson_id, iteration_success)
+
             state.latest_program = candidate_program
             state.latest_preflight = candidate_preflight
             state.latest_result = candidate_result
@@ -483,6 +502,14 @@ def build_graph(settings: Settings, run_dir: Path):
             )
             state.history.append(record)
 
+            dump_json(
+                run_dir / "adaptive_lesson_memory_snapshot.json",
+                {"lessons": lesson_memory.as_prompt_lessons()},
+            )
+            dump_json(
+                run_dir / "adaptive_lesson_stats_snapshot.json",
+                lesson_stats.get_stats(),
+            )
             dump_json(run_dir / f"iteration_{i}.json", record.model_dump())
             dump_json(
                 run_dir / f"iteration_{i:03d}_summary.json",
