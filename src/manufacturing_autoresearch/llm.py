@@ -12,6 +12,48 @@ from .types import ProblemDefinition, ProgramProposal
 
 load_dotenv()
 
+LESSON_CURATOR_SYSTEM_PROMPT = """You are extracting reusable adaptive modeling lessons from a successful MILP repair.
+
+Return ONLY a JSON object with this shape:
+{
+  "new_lessons": [
+    {
+      "lesson_id": "string",
+      "title": "string",
+      "applies_when": {
+        "failure_type": "string or null",
+        "missing_objective_terms": ["string"],
+        "traceback_contains": ["string"],
+        "violated_rules": ["string"],
+        "objective_ids": ["string"],
+        "always": false
+      },
+      "lesson": "string",
+      "recommended_actions": ["string"],
+      "anti_patterns": ["string"],
+      "priority_hint": 5,
+      "tags": ["string"]
+    }
+  ]
+}
+
+If no reusable lesson was learned, return:
+{"new_lessons": []}
+
+Follow the structure strictly.
+- Do not include markdown fences.
+- Do not include explanations outside the JSON.
+
+Rules:
+- Propose at most 2 lessons.
+- Only propose lessons if the successful repair revealed a reusable modeling pattern.
+- Do not restate an existing core lesson.
+- Do not create benchmark-specific lessons.
+- Do not mention file paths, run directories, or exact benchmark names.
+- Use structured applies_when fields such as failure_type, missing_objective_terms, violated_rules, traceback_contains, or objective_ids.
+- Prefer narrow reusable lessons over generic advice.
+- If no reusable lesson was learned, return {"new_lessons": []}.
+"""
 
 LESSON_SELECTOR_SYSTEM_PROMPT = """You are selecting modeling lessons for a MILP repair loop.
 
@@ -120,6 +162,58 @@ class LLMClient:
 
     def _fallback(self, current_best: ProgramProposal) -> ProgramProposal:
         return current_best
+    
+    def _json_chat(self, system_prompt, user_prompt, schema=None, temperature=0.2):
+        if self.client is None:
+            raise ValueError("OPENAI_API_KEY is not set")
+
+        request_kwargs = {
+            "model": self.model,
+            "temperature": temperature,
+            "input": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+            ],
+        }
+
+        if schema is not None:
+            request_kwargs["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "structured_response",
+                    "strict": True,
+                    "schema": schema,
+                }
+            }
+
+        response = self.client.responses.create(**request_kwargs)
+
+        text = getattr(response, "output_text", None)
+
+        print("[debug] _json_chat raw output_text repr:", repr(text))
+
+        if not text or not str(text).strip():
+            print("[debug] _json_chat full response object:", response)
+            raise ValueError("Empty response from model")
+
+        cleaned = str(text).strip()
+
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[len("```json"):].strip()
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[len("```"):].strip()
+
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
+
+        print("[debug] _json_chat cleaned text repr:", repr(cleaned))
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            print("[debug] _json_chat failed to parse JSON")
+            print("[debug] _json_chat cleaned text:", cleaned)
+            raise
     
     def _attach_lesson_history(self, available_lessons, lesson_stats=None):
         enriched = []
@@ -326,15 +420,6 @@ class LLMClient:
             lesson_stats=lesson_stats,
         )
 
-        print("[debug] lesson selector lesson history:")
-        for lesson in enriched_lessons:
-            print(
-                lesson.get("lesson_id"),
-                lesson.get("historical_score"),
-                lesson.get("historical_success_rate"),
-                lesson.get("historical_times_selected"),
-            )
-
         user_prompt = {
             "problem_definition": problem.model_dump(),
             "repair_signal": repair_signal,
@@ -393,4 +478,183 @@ class LLMClient:
             return resolved
         except Exception as exc:
             print(f"[debug] LLM lesson selector failed: {type(exc).__name__}: {exc}")
+            return []
+        
+    def curate_lessons(
+        self,
+        problem,
+        selected_modeling_lessons,
+        repair_signal_before,
+        reasoning_plan,
+        before_code,
+        after_code,
+        before_evaluation,
+        after_evaluation,
+        existing_lessons=None,
+        run_summary=None,
+    ):
+        """
+        Extract reusable adaptive modeling lessons from a successful accepted repair.
+
+        Returns:
+            list[dict]: normalized candidate lesson dicts, or [] if none were proposed / parsing failed.
+        """
+        if self.client is None:
+            return []
+
+        def _safe_model_dump(obj):
+            if obj is None:
+                return None
+            if hasattr(obj, "model_dump"):
+                try:
+                    return obj.model_dump()
+                except Exception:
+                    pass
+            if isinstance(obj, dict):
+                return obj
+            return {"value": str(obj)}
+
+        def _truncate(text, limit=12000):
+            text = "" if text is None else str(text)
+            if len(text) <= limit:
+                return text
+            return text[:limit] + "\n...[truncated]..."
+
+        def _compact_existing_lessons(existing):
+            compact = []
+            for lesson in existing or []:
+                if not isinstance(lesson, dict):
+                    continue
+                compact.append(
+                    {
+                        "lesson_id": lesson.get("lesson_id"),
+                        "title": lesson.get("title") or lesson.get("lesson"),
+                        "tags": lesson.get("tags", []),
+                        "applies_when": lesson.get("applies_when", {}),
+                    }
+                )
+            return compact
+
+        def _compact_selected_lessons(selected):
+            compact = []
+            for lesson in selected or []:
+                if not isinstance(lesson, dict):
+                    continue
+                compact.append(
+                    {
+                        "lesson_id": lesson.get("lesson_id"),
+                        "title": lesson.get("title") or lesson.get("lesson"),
+                        "selection_reason": lesson.get("selection_reason"),
+                        "historical_success_rate": lesson.get("historical_success_rate"),
+                        "historical_score": lesson.get("historical_score"),
+                    }
+                )
+            return compact
+
+        user_prompt = {
+            "task": "Extract reusable adaptive modeling lessons from a successful MILP repair.",
+            "problem_definition": _safe_model_dump(problem),
+            "repair_signal_before": repair_signal_before or {},
+            "selected_modeling_lessons": _compact_selected_lessons(selected_modeling_lessons),
+            "reasoning_plan": reasoning_plan if isinstance(reasoning_plan, dict) else {"value": str(reasoning_plan)},
+            "before_evaluation": _safe_model_dump(before_evaluation),
+            "after_evaluation": _safe_model_dump(after_evaluation),
+            "before_code": _truncate(before_code, limit=12000),
+            "after_code": _truncate(after_code, limit=12000),
+            "existing_lessons_summary": _compact_existing_lessons(existing_lessons),
+            "run_summary": run_summary or {},
+            "curation_rules": {
+                "max_new_lessons": 2,
+                "prefer_narrow_reusable_lessons": True,
+                "avoid_problem_specific_lessons": True,
+                "avoid_duplicate_core_or_adaptive_lessons": True,
+                "return_empty_if_no_new_reusable_pattern": True,
+            },
+        }
+
+        try:
+            response = self.client.responses.create(
+                model=self.model,
+                input=[
+                    {"role": "system", "content": LESSON_CURATOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                ],
+                text={"format": {"type": "json_object"}},
+            )
+
+            text = getattr(response, "output_text", None)
+            if not text or not str(text).strip():
+                return []
+
+            cleaned = str(text).strip()
+
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[len("```json"):].strip()
+            elif cleaned.startswith("```"):
+                cleaned = cleaned[len("```"):].strip()
+
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+
+            parsed = json.loads(cleaned)
+
+            if not isinstance(parsed, dict):
+                return []
+
+            new_lessons = parsed.get("new_lessons", [])
+            if not isinstance(new_lessons, list):
+                return []
+
+            normalized = []
+            for candidate in new_lessons:
+                if not isinstance(candidate, dict):
+                    continue
+
+                lesson_id = candidate.get("lesson_id")
+                title = candidate.get("title")
+                applies_when = candidate.get("applies_when")
+                lesson_text = candidate.get("lesson")
+                recommended_actions = candidate.get("recommended_actions", [])
+                anti_patterns = candidate.get("anti_patterns", [])
+                priority_hint = candidate.get("priority_hint", 5)
+                tags = candidate.get("tags", [])
+
+                if not lesson_id or not isinstance(lesson_id, str):
+                    continue
+                if not title or not isinstance(title, str):
+                    continue
+                if not lesson_text or not isinstance(lesson_text, str):
+                    continue
+                if not isinstance(applies_when, dict):
+                    continue
+                if not isinstance(recommended_actions, list):
+                    recommended_actions = []
+                if not isinstance(anti_patterns, list):
+                    anti_patterns = []
+                if not isinstance(tags, list):
+                    tags = []
+
+                anti_patterns_list = [str(x).strip() for x in anti_patterns if str(x).strip()]
+                recommended_actions_list = [str(x).strip() for x in recommended_actions if str(x).strip()]
+                tags_list = [str(x).strip() for x in tags if str(x).strip()]
+
+                normalized.append(
+                    {
+                        "lesson_id": lesson_id.strip(),
+                        "title": title.strip(),
+                        "applies_when": applies_when,
+                        "lesson": lesson_text.strip(),
+                        "recommended_actions": recommended_actions_list,
+                        "anti_patterns": anti_patterns_list,
+                        "priority_hint": int(priority_hint) if str(priority_hint).isdigit() else 5,
+                        "tags": tags_list,
+                        "lesson_type": "adaptive",
+                        "protected": False,
+                        "version": 1,
+                    }
+                )
+
+            return normalized
+
+        except Exception:
             return []

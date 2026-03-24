@@ -92,3 +92,9 @@ class LessonMemory:
 
     def as_prompt_lessons(self) -> list[dict[str, Any]]:
         return [self.lessons[k] for k in sorted(self.lessons)]
+    
+    def has_lesson(self, lesson_id: str) -> bool:
+        return lesson_id in self.lessons
+
+    def get_lesson_ids(self) -> set[str]:
+        return set(self.lessons.keys())

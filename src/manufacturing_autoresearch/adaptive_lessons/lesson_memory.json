@@ -1,13 +1,85 @@
 {
   "lessons": [
-    {
-      "lesson_id": "adaptive_test_lesson",
-      "description": "Test adaptive lesson loading",
+{
+      "lesson_id": "changeover_modeling_with_aux_vars",
+      "title": "Model changeovers explicitly with auxiliary variables",
       "applies_when": {
-        "failure_type": "objective_mismatch"
+        "failure_type": "objective_mismatch",
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "traceback_contains": [
+          "missing changeover terms"
+        ],
+        "violated_rules": [
+          "job_assigned_once"
+        ],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
       },
-      "created_at": "2026-03-24T12:00:00",
-      "version": 1
+      "lesson": "To accurately minimize total costs including changeover penalties, introduce auxiliary binary variables that represent changeovers between jobs on the same machine across consecutive slots. This ensures that the model captures the true cost implications of job transitions.",
+      "recommended_actions": [
+        "Introduce binary variables for changeovers between jobs on the same machine.",
+        "Add linking constraints between job assignments and changeover variables.",
+        "Revise the objective function to include changeover penalties."
+      ],
+      "anti_patterns": [
+        "Not using auxiliary variables for jobs that transition between slots while using the same machine.",
+        "Assuming the evaluator will infer changeovers from the model without explicit indications."
+      ],
+      "priority_hint": 1,
+      "tags": [
+        "objective",
+        "changeover",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T06:15:18.726258+00:00",
+      "updated_at": "2026-03-24T06:15:18.726258+00:00"
+    },
+    {
+      "lesson_id": "objective_extension_best_practice",
+      "title": "Extend the objective rather than overwrite",
+      "applies_when": {
+        "failure_type": "objective_mismatch",
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "traceback_contains": [
+          "overwriting previous objective"
+        ],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "When updating the objective function, always extend the existing objective with new terms instead of replacing it. This practice preserves the integrity of previously defined objectives and ensures that all relevant costs are accounted for.",
+      "recommended_actions": [
+        "Always append new terms to the existing objective instead of replacing it.",
+        "Review the objective structure to ensure all necessary components are included."
+      ],
+      "anti_patterns": [
+        "Overwriting the previous objective rather than extending with new terms.",
+        "Ignoring existing objective components when adding new terms."
+      ],
+      "priority_hint": 2,
+      "tags": [
+        "objective",
+        "best_practice",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T06:15:18.728833+00:00",
+      "updated_at": "2026-03-24T06:15:18.728833+00:00"
     }
   ]
 }

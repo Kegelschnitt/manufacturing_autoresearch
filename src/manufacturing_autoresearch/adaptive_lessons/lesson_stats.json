@@ -1,38 +1,47 @@
 {
   "set_objective_once": {
-    "times_selected": 9,
-    "times_successful": 4,
-    "times_failed": 5,
-    "last_used": "2026-03-24T04:52:53.135539+00:00",
+    "times_selected": 31,
+    "times_successful": 13,
+    "times_failed": 18,
+    "last_used": "2026-03-24T06:41:11.608593+00:00",
     "last_outcome": "success",
-    "success_rate": 0.4444444444444444,
-    "score": 1.023371152441798
+    "success_rate": 0.41935483870967744,
+    "score": 1.4533731205289175
   },
   "changeover_requires_auxiliary_variables": {
-    "times_selected": 9,
-    "times_successful": 4,
-    "times_failed": 5,
-    "last_used": "2026-03-24T04:52:53.135918+00:00",
+    "times_selected": 31,
+    "times_successful": 13,
+    "times_failed": 18,
+    "last_used": "2026-03-24T06:41:11.609780+00:00",
     "last_outcome": "success",
-    "success_rate": 0.4444444444444444,
-    "score": 1.023371152441798
+    "success_rate": 0.41935483870967744,
+    "score": 1.4533731205289175
   },
   "runtime_error_sparse_indexing": {
+    "times_selected": 28,
+    "times_successful": 12,
+    "times_failed": 16,
+    "last_used": "2026-03-24T06:41:11.610155+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.42857142857142855,
+    "score": 1.4431267842799174
+  },
+  "preserve_working_hard_constraints": {
     "times_selected": 9,
     "times_successful": 4,
     "times_failed": 5,
-    "last_used": "2026-03-24T04:52:53.136209+00:00",
-    "last_outcome": "success",
+    "last_used": "2026-03-24T05:29:49.676904+00:00",
+    "last_outcome": "failure",
     "success_rate": 0.4444444444444444,
     "score": 1.023371152441798
   },
-  "preserve_working_hard_constraints": {
-    "times_selected": 7,
-    "times_successful": 3,
-    "times_failed": 4,
-    "last_used": "2026-03-24T04:52:53.136302+00:00",
-    "last_outcome": "success",
-    "success_rate": 0.42857142857142855,
-    "score": 0.891189232148501
+  "objective_extension_best_practice": {
+    "times_selected": 1,
+    "times_successful": 0,
+    "times_failed": 1,
+    "last_used": "2026-03-24T06:40:26.928628+00:00",
+    "last_outcome": "failure",
+    "success_rate": 0.0,
+    "score": 0.0
   }
 }

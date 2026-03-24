@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from manufacturing_autoresearch import lesson_memory
+from manufacturing_autoresearch.lesson_memory import LessonMemory
+
 from .baseline import baseline_program
 from .evaluator import evaluate_result
 from .execution import execute_program
@@ -14,8 +17,8 @@ from .proposer_guidance import extract_proposer_guidance
 from .selector import should_accept_candidate
 from .types import IterationRecord, ProblemDefinition, RunState, Settings, SolverResult
 from .lesson_selector import select_lessons
-from .lesson_memory import LessonMemory
 from .lesson_stats import LessonStats
+from .lesson_curator import LessonCurator
 
 def _normalized(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.strip().splitlines())
@@ -313,6 +316,7 @@ def build_graph(settings: Settings, run_dir: Path):
     llm = LLMClient()
     lesson_memory = LessonMemory()
     lesson_stats = LessonStats()
+    lesson_curator = LessonCurator(memory=lesson_memory)
 
     def run(problem: ProblemDefinition) -> RunState:
         _print_start(problem, settings)
@@ -411,7 +415,11 @@ def build_graph(settings: Settings, run_dir: Path):
                 lesson_id = item.get("lesson_id") if isinstance(item, dict) else None
                 if lesson_id:
                     lesson_stats.record_usage(lesson_id)
-                        
+
+            repair_signal_before = dict(state.repair_signal or {})
+            before_code = state.best_program.model_logic
+            before_evaluation = state.best_evaluation
+
             candidate_program, reasoning_plan = llm.propose(
                 problem=problem,
                 current_best=state.best_program,
@@ -480,6 +488,41 @@ def build_graph(settings: Settings, run_dir: Path):
                 lesson_id = item.get("lesson_id") if isinstance(item, dict) else None
                 if lesson_id:
                     lesson_stats.record_outcome(lesson_id, iteration_success)
+
+            if accepted:
+                existing_lessons = core_lessons + lesson_memory.as_prompt_lessons()
+
+                proposed_lessons = lesson_curator.propose_lessons(
+                    llm=llm,
+                    problem=problem,
+                    selected_modeling_lessons=selected_modeling_lessons,
+                    repair_signal_before=repair_signal_before,
+                    reasoning_plan=reasoning_plan if isinstance(reasoning_plan, dict) else {},
+                    before_code=before_code,
+                    after_code=candidate_program.model_logic,
+                    before_evaluation=before_evaluation,
+                    after_evaluation=candidate_evaluation,
+                    run_summary={
+                        "iteration": i,
+                        "accepted": accepted,
+                        "problem_name": problem.name,
+                    },
+                    existing_lessons=existing_lessons,
+                )
+
+                filtered_lessons = lesson_curator.filter_new_lessons(
+                    proposed_lessons=proposed_lessons,
+                    problem_name=problem.name,
+                    existing_core_lessons=core_lessons,
+                )
+
+                for lesson in filtered_lessons:
+                    lesson_id = lesson.get("lesson_id")
+                    if lesson_id:
+                        lesson_memory.add_lesson(lesson_id, lesson)
+
+                if filtered_lessons:
+                    print("[adaptive] added lessons:", [x["lesson_id"] for x in filtered_lessons])
 
             state.latest_program = candidate_program
             state.latest_preflight = candidate_preflight
