@@ -1,0 +1,74 @@
+{
+  "name": "single_machine_tardiness",
+  "description": "Tardiness encoded via slot penalties.",
+  "entities": {
+    "jobs": [
+      "J1",
+      "J2",
+      "J3"
+    ],
+    "machines": [
+      "M1"
+    ],
+    "slots": [
+      0,
+      1,
+      2
+    ],
+    "workers": []
+  },
+  "parameters": {
+    "eligible": {
+      "J1": [
+        "M1"
+      ],
+      "J2": [
+        "M1"
+      ],
+      "J3": [
+        "M1"
+      ]
+    },
+    "cost": {
+      "J1|M1|0": 1,
+      "J1|M1|1": 3,
+      "J1|M1|2": 6,
+      "J2|M1|0": 2,
+      "J2|M1|1": 2,
+      "J2|M1|2": 5,
+      "J3|M1|0": 3,
+      "J3|M1|1": 1,
+      "J3|M1|2": 4
+    }
+  },
+  "evaluation_framework": {
+    "hard_rules": [
+      {
+        "id": "job_assigned_once",
+        "description": "Each job once"
+      },
+      {
+        "id": "machine_capacity",
+        "description": "One job per slot"
+      }
+    ],
+    "objective": {
+      "id": "min_total_cost",
+      "description": "Minimize tardiness proxy"
+    },
+    "result_schema_hint": {
+      "solver_status": "string",
+      "objective_value": "number",
+      "assignments": [
+        {
+          "job": "string",
+          "machine": "string",
+          "slot": "integer"
+        }
+      ],
+      "notes": [
+        "string"
+      ]
+    }
+  }
+}

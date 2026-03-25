@@ -1,47 +1,92 @@
 {
   "set_objective_once": {
-    "times_selected": 43,
-    "times_successful": 17,
-    "times_failed": 26,
-    "last_used": "2026-03-24T07:51:03.437898+00:00",
-    "last_outcome": "success",
-    "success_rate": 0.3953488372093023,
-    "score": 1.4960749715490798
+    "times_selected": 28,
+    "times_successful": 8,
+    "times_failed": 20,
+    "last_used": "2026-03-24T09:53:13.419765+00:00",
+    "last_outcome": "failure",
+    "success_rate": 0.2857142857142857,
+    "score": 0.9620845228532783
   },
   "changeover_requires_auxiliary_variables": {
-    "times_selected": 43,
-    "times_successful": 17,
-    "times_failed": 26,
-    "last_used": "2026-03-24T07:51:03.438526+00:00",
+    "times_selected": 14,
+    "times_successful": 5,
+    "times_failed": 9,
+    "last_used": "2026-03-24T09:49:46.991600+00:00",
     "last_outcome": "success",
-    "success_rate": 0.3953488372093023,
-    "score": 1.4960749715490798
+    "success_rate": 0.35714285714285715,
+    "score": 0.9671607861079322
+  },
+  "tardiness_requires_slot_based_penalty": {
+    "times_selected": 10,
+    "times_successful": 4,
+    "times_failed": 6,
+    "last_used": "2026-03-24T09:50:52.003301+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.4,
+    "score": 0.9591581091193483
   },
   "runtime_error_sparse_indexing": {
-    "times_selected": 35,
-    "times_successful": 15,
-    "times_failed": 20,
-    "last_used": "2026-03-24T07:51:03.438932+00:00",
-    "last_outcome": "success",
-    "success_rate": 0.42857142857142855,
-    "score": 1.5357938307669041
+    "times_selected": 20,
+    "times_successful": 3,
+    "times_failed": 17,
+    "last_used": "2026-03-24T09:53:13.420592+00:00",
+    "last_outcome": "failure",
+    "success_rate": 0.15,
+    "score": 0.45667836565851344
   },
   "preserve_working_hard_constraints": {
-    "times_selected": 12,
-    "times_successful": 4,
-    "times_failed": 8,
-    "last_used": "2026-03-24T07:44:09.229265+00:00",
+    "times_selected": 5,
+    "times_successful": 1,
+    "times_failed": 4,
+    "last_used": "2026-03-24T09:53:13.421454+00:00",
     "last_outcome": "failure",
-    "success_rate": 0.3333333333333333,
-    "score": 0.8549831191538455
+    "success_rate": 0.2,
+    "score": 0.358351893845611
   },
-  "objective_extension_best_practice": {
+  "dont_repair_in_extract_assignments": {
     "times_selected": 1,
+    "times_successful": 1,
+    "times_failed": 0,
+    "last_used": "2026-03-24T09:04:32.339044+00:00",
+    "last_outcome": "success",
+    "success_rate": 1.0,
+    "score": 0.6931471805599453
+  },
+  "update_objective_in_include_tardiness": {
+    "times_selected": 7,
+    "times_successful": 3,
+    "times_failed": 4,
+    "last_used": "2026-03-24T09:50:52.003443+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.42857142857142855,
+    "score": 0.891189232148501
+  },
+  "use_transition_variables_for_changeover": {
+    "times_selected": 5,
+    "times_successful": 1,
+    "times_failed": 4,
+    "last_used": "2026-03-24T09:25:54.714065+00:00",
+    "last_outcome": "success",
+    "success_rate": 0.2,
+    "score": 0.358351893845611
+  },
+  "worker_capacity_requires_slot_aggregation": {
+    "times_selected": 6,
     "times_successful": 0,
-    "times_failed": 1,
-    "last_used": "2026-03-24T06:40:26.928628+00:00",
+    "times_failed": 6,
+    "last_used": "2026-03-24T09:53:13.421064+00:00",
     "last_outcome": "failure",
     "success_rate": 0.0,
     "score": 0.0
+  },
+  "changeover_variables_linking": {
+    "times_selected": 1,
+    "times_successful": 1,
+    "times_failed": 0,
+    "last_used": "2026-03-24T09:49:46.991731+00:00",
+    "last_outcome": "success",
+    "success_rate": 1.0,
+    "score": 0.6931471805599453
   }
 }

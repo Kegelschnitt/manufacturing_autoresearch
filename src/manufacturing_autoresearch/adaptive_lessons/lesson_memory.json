@@ -1,35 +1,29 @@
 {
   "lessons": [
     {
-      "lesson_id": "changeover_modeling_with_aux_vars",
-      "title": "Model changeovers explicitly with auxiliary variables",
+      "lesson_id": "changeover_requires_auxiliary_variables_linked_constraints",
+      "title": "Model changeovers with explicit transition logic and constraints",
       "applies_when": {
-        "failure_type": "objective_mismatch",
+        "failure_type": null,
         "missing_objective_terms": [
           "changeover_penalty"
         ],
-        "traceback_contains": [
-          "missing changeover terms"
-        ],
-        "violated_rules": [
-          "job_assigned_once"
-        ],
+        "traceback_contains": [],
+        "violated_rules": [],
         "objective_ids": [
           "min_total_cost_with_changeover"
         ],
         "always": false
       },
-      "lesson": "To accurately minimize total costs including changeover penalties, introduce auxiliary binary variables that represent changeovers between jobs on the same machine across consecutive slots. This ensures that the model captures the true cost implications of job transitions.",
+      "lesson": "When modeling changeover penalties, introduce auxiliary variables that explicitly represent changeover transitions, and link them with assignment variables to ensure accurate representation of costs.",
       "recommended_actions": [
-        "Introduce binary variables for changeovers between jobs on the same machine.",
-        "Add linking constraints between job assignments and changeover variables.",
-        "Revise the objective function to include changeover penalties."
+        "Create binary variables to model changeovers between consecutive slots.",
+        "Establish linking constraints between changeover variables and job assignment variables."
       ],
       "anti_patterns": [
-        "Not using auxiliary variables for jobs that transition between slots while using the same machine.",
-        "Assuming the evaluator will infer changeovers from the model without explicit indications."
+        "Avoid conflating transition logic with assignment logic without clear variable separation."
       ],
-      "priority_hint": 1,
+      "priority_hint": 5,
       "tags": [
         "objective",
         "changeover",
@@ -39,103 +33,280 @@
       "lesson_type": "adaptive",
       "protected": false,
       "version": 1,
-      "created_at": "2026-03-24T06:15:18.726258+00:00",
-      "updated_at": "2026-03-24T06:15:18.726258+00:00"
+      "created_at": "2026-03-24T09:05:15.141986+00:00",
+      "updated_at": "2026-03-24T09:05:15.141986+00:00"
     },
     {
-      "lesson_id": "integrate_all_costs_in_objective",
-      "title": "Integrate all cost components in the objective function",
+      "lesson_id": "changeover_variables_linking",
+      "title": "Link changeover variables with assignment decisions",
       "applies_when": {
-        "missing_objective_terms": [
-          "assignment_cost",
-          "changeover_penalty"
-        ],
-        "objective_ids": [
-          "min_total_cost_with_changeover"
-        ],
-        "always": false
-      },
-      "lesson": "Ensure that all relevant cost components, including assignment costs and changeover penalties, are included in the objective function to achieve optimal solutions.",
-      "recommended_actions": [
-        "Structure the objective to combine assignment and changeover costs seamlessly.",
-        "Add all active cost terms into a single objective expression during model formulation."
-      ],
-      "anti_patterns": [
-        "Setting components of the objective in isolation rather than as part of a comprehensive objective expression."
-      ],
-      "priority_hint": 7,
-      "tags": [
-        "objective",
-        "cost",
-        "optimization",
-        "adaptive"
-      ],
-      "lesson_type": "adaptive",
-      "protected": false,
-      "version": 1,
-      "created_at": "2026-03-24T07:51:41.142675+00:00",
-      "updated_at": "2026-03-24T07:51:41.142675+00:00"
-    },
-    {
-      "lesson_id": "objective_extension_best_practice",
-      "title": "Extend the objective rather than overwrite",
-      "applies_when": {
-        "failure_type": "objective_mismatch",
+        "failure_type": null,
         "missing_objective_terms": [
           "changeover_penalty"
         ],
-        "traceback_contains": [
-          "overwriting previous objective"
-        ],
+        "traceback_contains": [],
         "violated_rules": [],
         "objective_ids": [
           "min_total_cost_with_changeover"
         ],
         "always": false
       },
-      "lesson": "When updating the objective function, always extend the existing objective with new terms instead of replacing it. This practice preserves the integrity of previously defined objectives and ensures that all relevant costs are accounted for.",
+      "lesson": "When implementing changeover penalties, ensure that changeover variables are properly linked to the assignment decision variables to accurately reflect the costs associated with transitions between jobs on machines.",
       "recommended_actions": [
-        "Always append new terms to the existing objective instead of replacing it.",
-        "Review the objective structure to ensure all necessary components are included."
+        "Introduce linking constraints that connect transition variables with job assignment variables.",
+        "Ensure changeover variables are activated only when applicable jobs are assigned simultaneously."
       ],
       "anti_patterns": [
-        "Overwriting the previous objective rather than extending with new terms.",
-        "Ignoring existing objective components when adding new terms."
+        "Failing to link transition variables with assignment decisions, leading to inaccurate modeling of changeover costs."
       ],
-      "priority_hint": 2,
+      "priority_hint": 5,
       "tags": [
         "objective",
-        "best_practice",
+        "changeover",
         "modeling",
         "adaptive"
       ],
       "lesson_type": "adaptive",
       "protected": false,
       "version": 1,
-      "created_at": "2026-03-24T06:15:18.728833+00:00",
-      "updated_at": "2026-03-24T06:15:18.728833+00:00"
+      "created_at": "2026-03-24T09:44:00.765375+00:00",
+      "updated_at": "2026-03-24T09:44:00.765375+00:00"
     },
     {
-      "lesson_id": "transition_variables_essential_for_changeover",
-      "title": "Use transition variables for modeling changeovers",
+      "lesson_id": "dynamic_update_objective_with_changeover",
+      "title": "Dynamically incorporate changeover penalties into the objective function",
+      "applies_when": {
+        "failure_type": null,
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "Ensure the objective function is dynamically updated to include changeover penalties, reflecting accurate total costs by integrating changeover terms seamlessly into the existing objective structure.",
+      "recommended_actions": [
+        "Regularly review the objective function to ensure all relevant terms are included.",
+        "Use a systematic approach to incorporate new variable types into existing objectives."
+      ],
+      "anti_patterns": [
+        "Updating the objective function only when violations occur rather than as a standard procedure."
+      ],
+      "priority_hint": 5,
+      "tags": [
+        "objective",
+        "adaptive",
+        "changeover"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:50:37.374074+00:00",
+      "updated_at": "2026-03-24T09:50:37.374074+00:00"
+    },
+    {
+      "lesson_id": "explicit_changeover_variables_templated_linking",
+      "title": "Create templates for linking changeover variables dynamically",
+      "applies_when": {
+        "failure_type": null,
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "When modeling changeover penalties, utilize templated approaches for linking changeover variables with assignment variables to enhance flexibility and scalability of the modeling process.",
+      "recommended_actions": [
+        "Develop reusable templates for linking changeover variables to assignment decisions.",
+        "Iterate over job and machine combinations to create consistent linking constraints."
+      ],
+      "anti_patterns": [
+        "Hardcoding links between variables rather than using a dynamic approach."
+      ],
+      "priority_hint": 5,
+      "tags": [
+        "changeover",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:50:37.371142+00:00",
+      "updated_at": "2026-03-24T09:50:37.371142+00:00"
+    },
+    {
+      "lesson_id": "explicit_changeover_variables_update_objective",
+      "title": "Ensure correct update of the objective to include changeover penalties explicitly",
+      "applies_when": {
+        "failure_type": null,
+        "missing_objective_terms": [
+          "changeover_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_changeover"
+        ],
+        "always": false
+      },
+      "lesson": "Incorporate changeover penalties in the objective function by adding terms that multiply the changeover variable by the changeover penalty.",
+      "recommended_actions": [
+        "Modify the objective function to include the new changeover cost terms accurately.",
+        "Add a term in the objective that integrates the total changeover penalties multiplied by their respective transition variables.",
+        "Review the objective structure to ensure the inclusion of changeover costs does not disrupt the total cost calculation."
+      ],
+      "anti_patterns": [
+        "Do not try to fix changeover costs by merely adjusting formatting without making structural changes.",
+        "Excluding changeover penalties from the objective, leading to misalignment with operational goals."
+      ],
+      "priority_hint": 5,
+      "tags": [
+        "objective",
+        "changeover",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:05:15.144529+00:00",
+      "updated_at": "2026-03-24T09:44:00.769670+00:00"
+    },
+    {
+      "lesson_id": "tardiness_auxiliary_variables",
+      "title": "Introduce auxiliary variables for tardiness penalties",
+      "applies_when": {
+        "failure_type": "null",
+        "missing_objective_terms": [
+          "tardiness_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_tardiness"
+        ],
+        "always": false
+      },
+      "lesson": "Implement auxiliary variables to represent tardiness and link them to assignment variables when modeling tardiness penalties.",
+      "recommended_actions": [
+        "Define auxiliary tardiness variables for each job.",
+        "Establish constraints connecting these variables to job assignments based on slots."
+      ],
+      "anti_patterns": [
+        "Neglecting to model tardiness penalties through auxiliary variables."
+      ],
+      "priority_hint": 5,
+      "tags": [
+        "tardiness",
+        "auxiliary",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:02:18.108056+00:00",
+      "updated_at": "2026-03-24T09:02:18.108056+00:00"
+    },
+    {
+      "lesson_id": "tardiness_linked_to_assignments",
+      "title": "Link tardiness penalties to job assignments directly",
+      "applies_when": {
+        "failure_type": null,
+        "missing_objective_terms": [
+          "tardiness_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_tardiness"
+        ],
+        "always": false
+      },
+      "lesson": "When modeling tardiness penalties, ensure that they are directly linked to the assigned slot of each job relative to its due slot, allowing effective calculation of penalties.",
+      "recommended_actions": [
+        "Add constraints that compute tardiness based on the assigned slot and due slot for each job."
+      ],
+      "anti_patterns": [
+        "Avoid treating tardiness as a separate objective; it should integrate directly with assignment variables."
+      ],
+      "priority_hint": 4,
+      "tags": [
+        "tardiness",
+        "modeling",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:06:07.534472+00:00",
+      "updated_at": "2026-03-24T09:06:07.534472+00:00"
+    },
+    {
+      "lesson_id": "update_objective_in_include_tardiness",
+      "title": "Update the objective to include tardiness penalties",
+      "applies_when": {
+        "failure_type": "objective_mismatch",
+        "missing_objective_terms": [
+          "tardiness_penalty"
+        ],
+        "traceback_contains": [],
+        "violated_rules": [],
+        "objective_ids": [
+          "min_total_cost_with_tardiness"
+        ],
+        "always": false
+      },
+      "lesson": "Ensure that the optimization objective reflects both assignment costs and tardiness penalties by combining them in a single expression.",
+      "recommended_actions": [
+        "Modify the objective function to account for tardiness penalties alongside assignment costs."
+      ],
+      "anti_patterns": [
+        "Separate handling of assignment and tardiness costs in the objective."
+      ],
+      "priority_hint": 5,
+      "tags": [
+        "objective",
+        "tardiness",
+        "adaptive"
+      ],
+      "lesson_type": "adaptive",
+      "protected": false,
+      "version": 1,
+      "created_at": "2026-03-24T09:02:18.109259+00:00",
+      "updated_at": "2026-03-24T09:02:18.109259+00:00"
+    },
+    {
+      "lesson_id": "use_transition_variables_for_changeover",
+      "title": "Utilize transition variables for modeling changeovers",
       "applies_when": {
         "missing_objective_terms": [
           "changeover_penalty"
+        ],
+        "traceback_contains": [
+          "changeover penalties require explicit transition variables"
         ],
         "objective_ids": [
           "min_total_cost_with_changeover"
         ],
         "always": false
       },
-      "lesson": "To account for changeover penalties in multi-slot scheduling, explicitly model transition variables that indicate job changes on the same machine between consecutive slots.",
+      "lesson": "When incorporating changeover penalties in an objective function, introduce explicit transition variables and linking constraints to accurately model the changeover costs.",
       "recommended_actions": [
-        "Introduce auxiliary binary variables for changeovers.",
-        "Establish linking constraints between job assignments and transition variables.",
-        "Ensure the changeover penalties are included directly in the MILP objective."
+        "Define binary transition variables for job changes between consecutive slots.",
+        "Link transition variables to assignment variables using appropriate constraints.",
+        "Update the objective function to include changeover penalties based on the transition variables."
       ],
       "anti_patterns": [
-        "Neglecting to link transition indicators to the corresponding job assignments.",
-        "Assuming that changeovers can be inferred without explicit modeling."
+        "Neglecting to define variables for changeovers and relying on implicit logic.",
+        "Simply adding a scalar changeover penalty to the objective without proper variable definitions."
       ],
       "priority_hint": 8,
       "tags": [
@@ -147,8 +318,8 @@
       "lesson_type": "adaptive",
       "protected": false,
       "version": 1,
-      "created_at": "2026-03-24T07:51:41.140465+00:00",
-      "updated_at": "2026-03-24T07:51:41.140465+00:00"
+      "created_at": "2026-03-24T09:01:06.831353+00:00",
+      "updated_at": "2026-03-24T09:01:06.831353+00:00"
     }
   ]
 }

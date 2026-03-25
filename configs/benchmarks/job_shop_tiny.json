@@ -1,0 +1,75 @@
+{
+  "name": "job_shop_tiny",
+  "description": "Simplified job shop encoded via cost penalties.",
+  "entities": {
+    "jobs": [
+      "J1",
+      "J2"
+    ],
+    "machines": [
+      "M1",
+      "M2"
+    ],
+    "slots": [
+      0,
+      1
+    ],
+    "workers": []
+  },
+  "parameters": {
+    "eligible": {
+      "J1": [
+        "M1",
+        "M2"
+      ],
+      "J2": [
+        "M1",
+        "M2"
+      ]
+    },
+    "cost": {
+      "J1|M1|0": 1,
+      "J1|M1|1": 5,
+      "J1|M2|0": 5,
+      "J1|M2|1": 1,
+      "J2|M1|0": 5,
+      "J2|M1|1": 1,
+      "J2|M2|0": 1,
+      "J2|M2|1": 5
+    }
+  },
+  "evaluation_framework": {
+    "hard_rules": [
+      {
+        "id": "job_assigned_once",
+        "description": "Each job once"
+      },
+      {
+        "id": "machine_capacity",
+        "description": "One job per slot"
+      },
+      {
+        "id": "eligibility",
+        "description": "Respect eligibility"
+      }
+    ],
+    "objective": {
+      "id": "min_total_cost",
+      "description": "Minimize assignment cost"
+    },
+    "result_schema_hint": {
+      "solver_status": "string",
+      "objective_value": "number",
+      "assignments": [
+        {
+          "job": "string",
+          "machine": "string",
+          "slot": "integer"
+        }
+      ],
+      "notes": [
+        "string"
+      ]
+    }
+  }
+}

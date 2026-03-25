@@ -134,6 +134,117 @@ def worker_capacity(problem: ProblemDefinition, assignments: list[Assignment]) -
     )
 
 
+def operation_order(problem: ProblemDefinition, assignments: list[Assignment]) -> RuleCheck:
+    """
+    Coarse precedence check for flow-shop / job-shop style problems.
+
+    Assumes assignments can be grouped by job and sorted by slot. For jobs with
+    multiple operations, later operations must not appear before earlier ones.
+    """
+    jobs_data = problem.parameters.get("jobs_data", {}) or {}
+    violations: list[dict[str, object]] = []
+
+    by_job: dict[str, list[Assignment]] = {}
+    for a in assignments:
+        by_job.setdefault(a.job, []).append(a)
+
+    for job_id, job_assignments in by_job.items():
+        ops = jobs_data.get(job_id, {}).get("operations", [])
+        if not ops or len(job_assignments) <= 1:
+            continue
+
+        sorted_assignments = sorted(job_assignments, key=lambda x: int(x.slot))
+        sorted_slots = [int(a.slot) for a in sorted_assignments]
+
+        for idx in range(1, len(sorted_slots)):
+            if sorted_slots[idx] < sorted_slots[idx - 1]:
+                violations.append(
+                    {
+                        "job": job_id,
+                        "slots": sorted_slots,
+                        "details": "operation order violated",
+                    }
+                )
+                break
+
+    if violations:
+        return _make_rule_check(
+            rule_id="operation_order",
+            passed=False,
+            details=f"operation precedence violations detected: {violations}",
+        )
+
+    return _make_rule_check(
+        rule_id="operation_order",
+        passed=True,
+        details="job operation order respected",
+    )
+
+
+def skill_match(problem: ProblemDefinition, assignments: list[Assignment]) -> RuleCheck:
+    """
+    Check that assigned workers / machines satisfy required job skills.
+
+    Expected parameters:
+      required_skill[job] -> skill
+      worker_skills[worker_or_machine] -> list[str]
+    """
+    required_skill = problem.parameters.get("required_skill", {}) or {}
+    worker_skills = problem.parameters.get("worker_skills", {}) or {}
+
+    invalid: list[dict[str, object]] = []
+    for a in assignments:
+        needed = required_skill.get(a.job)
+        if not needed:
+            continue
+
+        skills = worker_skills.get(a.machine, []) or []
+        if needed not in skills:
+            invalid.append(
+                {
+                    "job": a.job,
+                    "assigned_to": a.machine,
+                    "required_skill": needed,
+                    "available_skills": skills,
+                }
+            )
+
+    if invalid:
+        return _make_rule_check(
+            rule_id="skill_match",
+            passed=False,
+            details=f"skill mismatches detected: {invalid}",
+        )
+
+    return _make_rule_check(
+        rule_id="skill_match",
+        passed=True,
+        details="all assignments satisfy required skills",
+    )
+
+
+def makespan_consistency(problem: ProblemDefinition, assignments: list[Assignment]) -> RuleCheck:
+    """
+    Coarse consistency check for makespan-style problems.
+
+    This does not verify an exact MILP makespan formulation. It only checks that
+    assignments exist and that the schedule is non-empty when makespan is the objective.
+    """
+    if not assignments:
+        return _make_rule_check(
+            rule_id="makespan_consistency",
+            passed=False,
+            details="no assignments produced for makespan objective",
+        )
+
+    latest_slot = max(int(a.slot) for a in assignments)
+    return _make_rule_check(
+        rule_id="makespan_consistency",
+        passed=True,
+        details=f"non-empty schedule found; latest occupied slot = {latest_slot}",
+    )
+
+
 def build_rule_registry() -> dict[str, RuleSpec]:
     return {
         "job_assigned_once": RuleSpec(
@@ -193,6 +304,42 @@ def build_rule_registry() -> dict[str, RuleSpec]:
                 "workers_available_per_slot[slot]",
                 "slot-wise resource aggregation",
             ],
+        ),
+        "operation_order": RuleSpec(
+            rule_id="operation_order",
+            description="Operations within the same job must respect precedence order.",
+            evaluator=operation_order,
+            is_hard=True,
+            modeling_hint=(
+                "For each job, add precedence constraints so later operations can only "
+                "start after earlier operations finish."
+            ),
+            suggested_variables=[],
+            depends_on=["job operations", "operation precedence", "start/slot ordering"],
+        ),
+        "skill_match": RuleSpec(
+            rule_id="skill_match",
+            description="Jobs may only be assigned to workers or machines with the required skill.",
+            evaluator=skill_match,
+            is_hard=True,
+            modeling_hint=(
+                "Only create assignment variables for job-resource pairs that satisfy "
+                "the required skill. Use sparse indexing to avoid invalid combinations."
+            ),
+            suggested_variables=[],
+            depends_on=["required_skill[job]", "worker_skills[resource]", "eligible assignment pairs"],
+        ),
+        "makespan_consistency": RuleSpec(
+            rule_id="makespan_consistency",
+            description="The schedule must be consistent with a makespan-style objective.",
+            evaluator=makespan_consistency,
+            is_hard=False,
+            modeling_hint=(
+                "Introduce a makespan variable C_max and constrain each job completion "
+                "time to be less than or equal to C_max. Minimize C_max."
+            ),
+            suggested_variables=["C_max"],
+            depends_on=["completion time variables", "max-completion objective"],
         ),
     }
 

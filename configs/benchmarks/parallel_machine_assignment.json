@@ -1,0 +1,78 @@
+{
+  "name": "parallel_machine_assignment",
+  "description": "Assign jobs to machines minimizing cost differences.",
+  "entities": {
+    "jobs": [
+      "J1",
+      "J2",
+      "J3"
+    ],
+    "machines": [
+      "M1",
+      "M2",
+      "M3"
+    ],
+    "slots": [
+      0
+    ],
+    "workers": []
+  },
+  "parameters": {
+    "eligible": {
+      "J1": [
+        "M1",
+        "M2"
+      ],
+      "J2": [
+        "M2",
+        "M3"
+      ],
+      "J3": [
+        "M1",
+        "M3"
+      ]
+    },
+    "cost": {
+      "J1|M1|0": 1,
+      "J1|M2|0": 2,
+      "J2|M2|0": 1,
+      "J2|M3|0": 2,
+      "J3|M1|0": 2,
+      "J3|M3|0": 1
+    }
+  },
+  "evaluation_framework": {
+    "hard_rules": [
+      {
+        "id": "job_assigned_once",
+        "description": "Each job once"
+      },
+      {
+        "id": "machine_capacity",
+        "description": "Capacity"
+      },
+      {
+        "id": "eligibility",
+        "description": "Respect eligibility"
+      }
+    ],
+    "objective": {
+      "id": "min_total_cost",
+      "description": "Minimize cost"
+    },
+    "result_schema_hint": {
+      "solver_status": "string",
+      "objective_value": "number",
+      "assignments": [
+        {
+          "job": "string",
+          "machine": "string",
+          "slot": "integer"
+        }
+      ],
+      "notes": [
+        "string"
+      ]
+    }
+  }
+}
