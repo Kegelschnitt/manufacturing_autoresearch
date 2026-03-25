@@ -1,0 +1,97 @@
+{
+  "runs_total": 14,
+  "runs_solved": 10,
+  "solve_rate": 0.7142857142857143,
+  "avg_iterations_completed": 1.0714285714285714,
+  "median_iterations_completed": 0.5,
+  "problems": {
+    "assignment_small": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "changeover_sequence": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 1,
+      "adaptive_merged_total": 1,
+      "adaptive_rejected_total": 0
+    },
+    "changeover_small": {
+      "passes": 2,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 3,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 1
+    },
+    "eligibility_sparse": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "flow_shop_small": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "job_shop_tiny": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "parallel_machine_assignment": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "single_machine_tardiness": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "tardiness_small": {
+      "passes": 2,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 2,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 4
+    },
+    "worker_capacity_multi_skill": {
+      "passes": 2,
+      "solved_any_pass": false,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    },
+    "worker_capacity_small": {
+      "passes": 1,
+      "solved_any_pass": true,
+      "best_objective_seen": null,
+      "adaptive_added_total": 0,
+      "adaptive_merged_total": 0,
+      "adaptive_rejected_total": 0
+    }
+  }
+}

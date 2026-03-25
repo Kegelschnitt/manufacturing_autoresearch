@@ -1,0 +1,15 @@
+problem,pass,run_dir,status,accepted_solution_found,best_feasible_candidate_found,iterations_completed,best_solver_status,best_is_feasible,best_is_acceptable,best_computed_objective,latest_failure_type,latest_summary,adaptive_added_count,adaptive_merged_count,adaptive_rejected_count,selected_lessons_total,selected_lessons_unique,curation_reports,process_returncode
+assignment_small,1,runs/benchmark_experiments/pass_1_assignment_small,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+changeover_sequence,1,runs/benchmark_experiments/pass_1_changeover_sequence,ok_final_summary,True,True,1,,,,,,,1,1,0,3,3,1,0
+changeover_small,1,runs/benchmark_experiments/pass_1_changeover_small,ok_final_summary,False,True,3,,,,,,,1,0,0,9,3,1,0
+eligibility_sparse,1,runs/benchmark_experiments/pass_1_eligibility_sparse,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+flow_shop_small,1,runs/benchmark_experiments/pass_1_flow_shop_small,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+job_shop_tiny,1,runs/benchmark_experiments/pass_1_job_shop_tiny,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+parallel_machine_assignment,1,runs/benchmark_experiments/pass_1_parallel_machine_assignment,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+single_machine_tardiness,1,runs/benchmark_experiments/pass_1_single_machine_tardiness,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+tardiness_small,1,runs/benchmark_experiments/pass_1_tardiness_small,ok_final_summary,False,True,3,,,,,,,2,0,2,12,4,2,0
+worker_capacity_multi_skill,1,runs/benchmark_experiments/pass_1_worker_capacity_multi_skill,ok_final_summary,False,False,3,,,,,,,0,0,0,9,3,0,0
+worker_capacity_small,1,runs/benchmark_experiments/pass_1_worker_capacity_small,ok_final_summary,True,True,0,,,,,,,0,0,0,0,0,0,0
+changeover_small,2,runs/benchmark_experiments/pass_2_changeover_small,ok_final_summary,True,True,1,,,,,,,2,0,1,7,5,2,0
+tardiness_small,2,runs/benchmark_experiments/pass_2_tardiness_small,ok_final_summary,True,True,1,,,,,,,0,0,2,3,3,1,0
+worker_capacity_multi_skill,2,runs/benchmark_experiments/pass_2_worker_capacity_multi_skill,ok_final_summary,False,False,3,,,,,,,0,0,0,12,4,0,0
